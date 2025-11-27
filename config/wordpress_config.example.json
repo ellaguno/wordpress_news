@@ -1,0 +1,79 @@
+{
+    "openai": {
+        "api_key": "sk-proj-YOUR_OPENAI_API_KEY_HERE",
+        "model": "gpt-4o",
+        "image_model": "dall-e-3",
+        "generation_params": {
+            "title": {
+                "temperature": 0.7,
+                "presence_penalty": 0.0,
+                "frequency_penalty": 0.0,
+                "max_tokens": 100
+            },
+            "content": {
+                "temperature": 0.3,
+                "presence_penalty": 0.1,
+                "frequency_penalty": 0.1,
+                "max_tokens": 4000
+            },
+            "image": {
+                "quality": "standard",
+                "style": "natural",
+                "size": "1024x1024"
+            }
+        }
+    },
+    "image_settings": {
+        "watermark": {
+            "path": "/usr/local/bin/publicador/assets/sello.svg",
+            "enabled": true}
+        },
+    "content_settings": {
+            "article": {
+                "min_words": 1500,
+                "max_words": 2000,
+                "min_sections": 4,
+                "max_sections": 6,
+                "reading_time_minutes": {
+                    "min": 6,
+                    "max": 10
+                }
+            }
+        },
+    "sites": {
+        "example_site": {
+            "url": "https://your-site.com/xmlrpc.php",
+            "username": "your_username",
+            "password": "your_password"
+        }
+    },
+    "article_topics": [
+        "Tecnología e Innovación",
+        "Ciencia y Descubrimientos",
+        "Herramienta de Software Libre",
+        "Inteligencia Artificial y Aprendizaje Automático",
+        "Nuevos productos tecnológicos",
+        "Herramientas para enseñanza",
+        "Desarrollo Personal y Productividad",
+        "Ciberseguridad y Privacidad",
+        "Literatura y Creación Literaria",
+        "Arte Digital y Diseño",
+        "Review de herramienta de software para profesionales",
+        "Videojuegos y Entretenimiento Digital",
+        "Salud y Bienestar",
+        "Emprendimiento Tecnológico",
+        "Reseña de un libro que haya ganado un premio",
+        "Blockchain y Criptomonedas",
+        "Administración de Proyectos"
+    ],
+    "news_topics": [
+        {
+            "nombre": "Internacional",
+            "imagen": "https://your-site.com/wp-content/uploads/imagen.png"
+        },
+        {
+            "nombre": "Ciencia y Tecnología",
+            "imagen": "https://your-site.com/wp-content/uploads/imagen.png"
+        }
+    ]
+}

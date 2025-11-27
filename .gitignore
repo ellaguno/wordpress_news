@@ -1,0 +1,32 @@
+# Configuración con credenciales
+config/wordpress_config.json
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.egg-info/
+.eggs/
+*.egg
+
+# Entornos virtuales
+venv/
+env/
+.venv/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Archivos generados/almacenamiento
+storage/noticias/
+storage/articulos/
+storage/imagenes/
+
+# Sistema
+.DS_Store
+Thumbs.db
