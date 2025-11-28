@@ -24,6 +24,7 @@ class AICG_Cron_Scheduler {
         add_action('update_option_aicg_schedule_articles_frequency', array($this, 'reschedule_articles'), 10, 2);
         add_action('update_option_aicg_schedule_news', array($this, 'reschedule_news'), 10, 2);
         add_action('update_option_aicg_schedule_news_frequency', array($this, 'reschedule_news'), 10, 2);
+        add_action('update_option_aicg_schedule_news_time', array($this, 'reschedule_news'), 10, 2);
     }
 
     /**
@@ -85,11 +86,14 @@ class AICG_Cron_Scheduler {
 
         $topic = $topics[array_rand($topics)];
 
+        // Obtener estado de publicación configurado
+        $post_status = get_option('aicg_schedule_post_status', 'draft');
+
         // Generar artículo
         $generator = new AICG_Article_Generator();
         $result = $generator->generate(array(
             'topic' => $topic,
-            'post_status' => 'draft', // Por seguridad, siempre como borrador
+            'post_status' => $post_status,
             'generate_image' => true
         ));
 
@@ -132,11 +136,14 @@ class AICG_Cron_Scheduler {
             return;
         }
 
+        // Obtener estado de publicación configurado
+        $post_status = get_option('aicg_schedule_post_status', 'draft');
+
         // Generar resumen de noticias
         $aggregator = new AICG_News_Aggregator();
         $result = $aggregator->generate(array(
             'include_headlines' => true,
-            'post_status' => 'draft'
+            'post_status' => $post_status
         ));
 
         if (is_wp_error($result)) {
@@ -185,8 +192,67 @@ class AICG_Cron_Scheduler {
         // Si está habilitado, programar nueva tarea
         if (get_option('aicg_schedule_news', false)) {
             $frequency = get_option('aicg_schedule_news_frequency', 'twicedaily');
-            wp_schedule_event(time() + 60, $frequency, 'aicg_generate_scheduled_news');
+            $schedule_time = get_option('aicg_schedule_news_time', '08:00');
+
+            // Calcular el timestamp para la próxima ejecución
+            $next_run = $this->calculate_next_run_time($schedule_time, $frequency);
+
+            wp_schedule_event($next_run, $frequency, 'aicg_generate_scheduled_news');
+
+            error_log('[AICG] Noticias programadas para: ' . date_i18n('Y-m-d H:i:s', $next_run) . ' (frecuencia: ' . $frequency . ')');
         }
+    }
+
+    /**
+     * Calcular el próximo timestamp de ejecución basado en la hora configurada
+     *
+     * WordPress Cron usa timestamps UTC. Necesitamos:
+     * 1. Interpretar la hora configurada en la zona horaria de WordPress
+     * 2. Devolver el timestamp UTC equivalente
+     *
+     * @param string $time Hora en formato HH:00
+     * @param string $frequency Frecuencia (hourly, twicedaily, daily)
+     * @return int Timestamp UTC
+     */
+    private function calculate_next_run_time($time, $frequency) {
+        // Si es cada hora, ejecutar en la próxima hora
+        if ($frequency === 'hourly') {
+            $next = strtotime('+1 hour');
+            return strtotime(date('Y-m-d H:00:00', $next));
+        }
+
+        // Obtener la hora configurada
+        $parts = explode(':', $time);
+        $hour = isset($parts[0]) ? intval($parts[0]) : 8;
+
+        // Obtener la zona horaria de WordPress
+        $timezone = wp_timezone();
+
+        // Crear datetime para "ahora" en la zona horaria de WordPress
+        $now = new DateTime('now', $timezone);
+
+        // Crear datetime para hoy a la hora configurada (en zona horaria de WordPress)
+        $scheduled = new DateTime('today', $timezone);
+        $scheduled->setTime($hour, 0, 0);
+
+        // Si ya pasó la hora de hoy, programar para mañana
+        if ($scheduled <= $now) {
+            $scheduled->modify('+1 day');
+        }
+
+        // getTimestamp() siempre devuelve UTC, que es lo que WordPress necesita
+        $timestamp = $scheduled->getTimestamp();
+
+        // Log para debug
+        error_log('[AICG] === Cálculo de próxima ejecución ===');
+        error_log('[AICG] Hora configurada: ' . $time);
+        error_log('[AICG] Zona horaria WP: ' . $timezone->getName());
+        error_log('[AICG] Ahora (local): ' . $now->format('Y-m-d H:i:s'));
+        error_log('[AICG] Programado (local): ' . $scheduled->format('Y-m-d H:i:s'));
+        error_log('[AICG] Timestamp UTC: ' . $timestamp);
+        error_log('[AICG] Verificación con date_i18n: ' . date_i18n('Y-m-d H:i:s', $timestamp));
+
+        return $timestamp;
     }
 
     /**

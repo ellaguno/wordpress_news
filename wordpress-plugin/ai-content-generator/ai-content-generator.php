@@ -3,10 +3,10 @@
  * Plugin Name: AI Content Generator
  * Plugin URI: https://github.com/sesolibre/ai-content-generator
  * Description: Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter)
- * Version: 1.0.0
+ * Version: 2.3.1
  * Requires at least: 5.8
  * Requires PHP: 7.4
- * Author: Eduardo Llaguno Velasco
+ * Author: Eduardo Llaguno
  * Author URI: https://sesolibre.com
  * License: GPL v2 or later
  * License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constantes del plugin
-define('AICG_VERSION', '1.0.0');
+define('AICG_VERSION', '2.3.1');
 define('AICG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AICG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AICG_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -78,6 +78,7 @@ final class AI_Content_Generator {
         require_once AICG_PLUGIN_DIR . 'includes/class-article-generator.php';
         require_once AICG_PLUGIN_DIR . 'includes/class-news-aggregator.php';
         require_once AICG_PLUGIN_DIR . 'includes/class-image-processor.php';
+        require_once AICG_PLUGIN_DIR . 'includes/class-gutenberg-converter.php';
 
         // Administración
         require_once AICG_PLUGIN_DIR . 'admin/class-admin-settings.php';
@@ -182,7 +183,13 @@ final class AI_Content_Generator {
             'aicg_schedule_articles' => false,
             'aicg_schedule_articles_frequency' => 'daily',
             'aicg_schedule_news' => false,
-            'aicg_schedule_news_frequency' => 'twicedaily'
+            'aicg_schedule_news_frequency' => 'twicedaily',
+            'aicg_content_format' => 'gutenberg',
+            'aicg_news_post_type' => 'post',
+            'aicg_reference_style' => 'circle',
+            'aicg_reference_color' => '#0073aa',
+            'aicg_reference_orientation' => 'horizontal',
+            'aicg_image_size' => '1792x1024'
         );
 
         foreach ($default_options as $key => $value) {

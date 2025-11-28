@@ -153,13 +153,17 @@ class AICG_Admin_Dashboard {
         $topics = isset($_POST['topics']) ? array_map('sanitize_text_field', $_POST['topics']) : array();
         $include_headlines = !empty($_POST['include_headlines']);
         $post_status = sanitize_text_field($_POST['post_status'] ?? 'draft');
+        $post_type = sanitize_text_field($_POST['post_type'] ?? 'post');
+        $generate_image = !empty($_POST['generate_image']);
 
         // Generar noticias
         $aggregator = new AICG_News_Aggregator();
         $result = $aggregator->generate(array(
             'topics' => $topics,
             'include_headlines' => $include_headlines,
-            'post_status' => $post_status
+            'post_status' => $post_status,
+            'post_type' => $post_type,
+            'generate_image' => $generate_image
         ));
 
         if (is_wp_error($result)) {

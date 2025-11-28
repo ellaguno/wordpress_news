@@ -16,12 +16,18 @@ if (!defined('ABSPATH')) {
 class AICG_Image_Processor {
 
     /**
-     * Descargar imagen desde URL
+     * Descargar imagen desde URL o decodificar desde data URL base64
      *
-     * @param string $url URL de la imagen
+     * @param string $url URL de la imagen o data URL (data:image/png;base64,...)
      * @return string|WP_Error Datos binarios de la imagen o error
      */
     public function download_image($url) {
+        // Verificar si es un data URL base64
+        if (strpos($url, 'data:image/') === 0) {
+            return $this->decode_base64_image($url);
+        }
+
+        // URL HTTP/HTTPS normal
         $response = wp_remote_get($url, array(
             'timeout' => 60,
             'headers' => array(
@@ -50,6 +56,88 @@ class AICG_Image_Processor {
         }
 
         return wp_remote_retrieve_body($response);
+    }
+
+    /**
+     * Decodificar imagen desde data URL base64
+     *
+     * @param string $data_url Data URL en formato data:image/TYPE;base64,DATA
+     * @return string|WP_Error Datos binarios de la imagen o error
+     */
+    public function decode_base64_image($data_url) {
+        // Formato esperado: data:image/png;base64,iVBORw0KGgo...
+        if (!preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/', $data_url, $matches)) {
+            return new WP_Error(
+                'invalid_data_url',
+                __('Formato de data URL inválido', 'ai-content-generator')
+            );
+        }
+
+        $mime_type = $matches[1];
+        $base64_data = $matches[2];
+
+        // Decodificar base64
+        $image_data = base64_decode($base64_data, true);
+
+        if ($image_data === false) {
+            return new WP_Error(
+                'base64_decode_error',
+                __('Error al decodificar datos base64', 'ai-content-generator')
+            );
+        }
+
+        // Verificar que los datos son una imagen válida
+        if (strlen($image_data) < 8) {
+            return new WP_Error(
+                'invalid_image_data',
+                __('Los datos de imagen son demasiado pequeños', 'ai-content-generator')
+            );
+        }
+
+        // Verificar firma de archivo de imagen
+        $header = substr($image_data, 0, 8);
+        $is_png = (substr($header, 0, 4) === "\x89PNG");
+        $is_jpeg = (substr($header, 0, 2) === "\xFF\xD8");
+        $is_gif = (substr($header, 0, 3) === "GIF");
+        $is_webp = (substr($header, 0, 4) === "RIFF" && substr($image_data, 8, 4) === "WEBP");
+
+        if (!$is_png && !$is_jpeg && !$is_gif && !$is_webp) {
+            error_log('[AICG] Image header bytes: ' . bin2hex(substr($header, 0, 4)));
+            return new WP_Error(
+                'invalid_image_format',
+                __('El formato de imagen no es válido (esperado PNG, JPEG, GIF o WebP)', 'ai-content-generator')
+            );
+        }
+
+        error_log('[AICG] Successfully decoded base64 image: ' . strlen($image_data) . ' bytes, type: ' . $mime_type);
+
+        return $image_data;
+    }
+
+    /**
+     * Obtener extensión de archivo desde data URL
+     *
+     * @param string $data_url Data URL
+     * @return string Extensión del archivo (png, jpg, gif, webp)
+     */
+    public function get_extension_from_data_url($data_url) {
+        if (preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,/', $data_url, $matches)) {
+            $mime = strtolower($matches[1]);
+            switch ($mime) {
+                case 'jpeg':
+                case 'jpg':
+                    return 'jpg';
+                case 'png':
+                    return 'png';
+                case 'gif':
+                    return 'gif';
+                case 'webp':
+                    return 'webp';
+                default:
+                    return 'png';
+            }
+        }
+        return 'png';
     }
 
     /**

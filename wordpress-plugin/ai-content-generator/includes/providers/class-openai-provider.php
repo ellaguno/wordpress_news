@@ -78,20 +78,31 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
      */
     public function get_image_models() {
         return array(
+            // Modelos GPT con generación de imagen (2025)
+            'gpt-image-1' => array(
+                'name' => 'GPT Image 1',
+                'description' => 'Generación de imágenes avanzada con GPT',
+                'sizes' => array('1024x1024', '1536x1024', '1024x1536'),
+                'qualities' => array('low', 'medium', 'high'),
+                'cost_standard' => 0.02,
+                'returns_b64' => true
+            ),
             'dall-e-3' => array(
                 'name' => 'DALL-E 3',
                 'description' => 'Generación de imágenes de alta calidad',
                 'sizes' => array('1024x1024', '1792x1024', '1024x1792'),
                 'qualities' => array('standard', 'hd'),
                 'cost_standard' => 0.04,
-                'cost_hd' => 0.08
+                'cost_hd' => 0.08,
+                'returns_b64' => false
             ),
             'dall-e-2' => array(
                 'name' => 'DALL-E 2',
                 'description' => 'Generación de imágenes económica',
                 'sizes' => array('256x256', '512x512', '1024x1024'),
                 'qualities' => array('standard'),
-                'cost_standard' => 0.02
+                'cost_standard' => 0.02,
+                'returns_b64' => false
             )
         );
     }
@@ -218,14 +229,30 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
             $body['style'] = $options['style'];
         }
 
+        // gpt-image-1 soporta quality diferente y output_format
+        if ($options['model'] === 'gpt-image-1') {
+            $body['quality'] = isset($options['quality']) ? $options['quality'] : 'medium';
+            // gpt-image-1 siempre retorna b64_json, no soporta response_format
+        }
+
         $response = $this->make_request('/images/generations', $body);
 
         if (is_wp_error($response)) {
             return $response;
         }
 
-        if (!isset($response['data'][0]['url'])) {
-            return new WP_Error('invalid_response', __('Respuesta inválida de DALL-E', 'ai-content-generator'));
+        // Extraer imagen: puede venir como URL o como b64_json
+        $image_url = null;
+        if (isset($response['data'][0]['url'])) {
+            $image_url = $response['data'][0]['url'];
+        } elseif (isset($response['data'][0]['b64_json'])) {
+            // gpt-image-1 y otros modelos retornan base64
+            $image_url = 'data:image/png;base64,' . $response['data'][0]['b64_json'];
+        }
+
+        if (!$image_url) {
+            error_log('[AICG] OpenAI image response: ' . print_r($response, true));
+            return new WP_Error('invalid_response', __('Respuesta inválida de generación de imagen', 'ai-content-generator'));
         }
 
         $models = $this->get_image_models();
@@ -235,7 +262,7 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
             : 0.04;
 
         return array(
-            'url' => $response['data'][0]['url'],
+            'url' => $image_url,
             'revised_prompt' => isset($response['data'][0]['revised_prompt'])
                 ? $response['data'][0]['revised_prompt']
                 : $prompt,

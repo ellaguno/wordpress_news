@@ -82,7 +82,39 @@ $news_topics = get_option('aicg_news_topics', array());
 
                     <tr>
                         <th scope="row">
-                            <label for="aicg_news_status"><?php esc_html_e('Estado del Post', 'ai-content-generator'); ?></label>
+                            <label for="aicg_generate_image"><?php esc_html_e('Imagen Destacada', 'ai-content-generator'); ?></label>
+                        </th>
+                        <td>
+                            <?php $default_generate_image = get_option('aicg_news_generate_image', false); ?>
+                            <label>
+                                <input type="checkbox" name="generate_image" id="aicg_generate_image" value="1" <?php checked($default_generate_image); ?>>
+                                <?php esc_html_e('Generar imagen destacada con IA', 'ai-content-generator'); ?>
+                            </label>
+                            <p class="description">
+                                <?php esc_html_e('Se generará una imagen con DALL-E basada en los titulares principales del día.', 'ai-content-generator'); ?>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row">
+                            <label for="aicg_post_type"><?php esc_html_e('Tipo de Publicación', 'ai-content-generator'); ?></label>
+                        </th>
+                        <td>
+                            <?php $default_post_type = get_option('aicg_news_post_type', 'post'); ?>
+                            <select name="post_type" id="aicg_post_type">
+                                <option value="post" <?php selected($default_post_type, 'post'); ?>><?php esc_html_e('Entrada (Post)', 'ai-content-generator'); ?></option>
+                                <option value="page" <?php selected($default_post_type, 'page'); ?>><?php esc_html_e('Página (Page)', 'ai-content-generator'); ?></option>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Elige si crear el resumen como entrada o como página.', 'ai-content-generator'); ?>
+                            </p>
+                        </td>
+                    </tr>
+
+                    <tr>
+                        <th scope="row">
+                            <label for="aicg_news_status"><?php esc_html_e('Estado', 'ai-content-generator'); ?></label>
                         </th>
                         <td>
                             <select name="post_status" id="aicg_news_status">

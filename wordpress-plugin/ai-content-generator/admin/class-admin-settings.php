@@ -240,6 +240,79 @@ class AICG_Admin_Settings {
             'aicg_news_section'
         );
 
+        // Tipo de publicación para noticias
+        register_setting('aicg-settings', 'aicg_news_post_type', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'post'
+        ));
+
+        // Formato de contenido (Gutenberg o clásico)
+        register_setting('aicg-settings', 'aicg_content_format', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'gutenberg'
+        ));
+
+        // Imagen destacada fija para noticias
+        register_setting('aicg-settings', 'aicg_news_featured_image', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 0
+        ));
+
+        // Generar imagen con IA para resumen de noticias
+        register_setting('aicg-settings', 'aicg_news_generate_image', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => false
+        ));
+
+        // Estilo de referencias
+        register_setting('aicg-settings', 'aicg_reference_style', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'inline'
+        ));
+
+        register_setting('aicg-settings', 'aicg_reference_color', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_hex_color',
+            'default' => '#0073aa'
+        ));
+
+        register_setting('aicg-settings', 'aicg_reference_orientation', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'horizontal'
+        ));
+
+        // Actualizar post existente
+        register_setting('aicg-settings', 'aicg_news_update_existing', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => false
+        ));
+
+        register_setting('aicg-settings', 'aicg_news_target_post', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 0
+        ));
+
+        // Prompts personalizables
+        register_setting('aicg-settings', 'aicg_news_system_prompt', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'default' => 'Eres un periodista experto que resume noticias de forma objetiva y precisa. Usas HTML puro, nunca Markdown.'
+        ));
+
+        register_setting('aicg-settings', 'aicg_news_user_prompt', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'default' => ''
+        ));
+
         // Sección: Imágenes
         add_settings_section(
             'aicg_image_section',
@@ -247,6 +320,20 @@ class AICG_Admin_Settings {
             array($this, 'render_image_section'),
             'aicg-settings'
         );
+
+        // Tamaño de imagen
+        register_setting('aicg-settings', 'aicg_image_size', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => '1792x1024'
+        ));
+
+        // Calidad de imagen
+        register_setting('aicg-settings', 'aicg_image_quality', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_text_field',
+            'default' => 'standard'
+        ));
 
         register_setting('aicg-settings', 'aicg_watermark_enabled', array(
             'type' => 'boolean',
@@ -308,6 +395,18 @@ class AICG_Admin_Settings {
             'default' => 'twicedaily'
         ));
 
+        register_setting('aicg-settings', 'aicg_schedule_news_time', array(
+            'type' => 'string',
+            'sanitize_callback' => array($this, 'sanitize_time_field'),
+            'default' => '08:00'
+        ));
+
+        register_setting('aicg-settings', 'aicg_schedule_post_status', array(
+            'type' => 'string',
+            'sanitize_callback' => array($this, 'sanitize_post_status_field'),
+            'default' => 'draft'
+        ));
+
         add_settings_field(
             'aicg_schedule_news',
             __('Noticias Programadas', 'ai-content-generator'),
@@ -315,6 +414,28 @@ class AICG_Admin_Settings {
             'aicg-settings',
             'aicg_schedule_section'
         );
+    }
+
+    /**
+     * Sanitizar campo de hora
+     */
+    public function sanitize_time_field($value) {
+        // Validar formato HH:00
+        if (preg_match('/^([01]?[0-9]|2[0-3]):00$/', $value)) {
+            return $value;
+        }
+        return '08:00';
+    }
+
+    /**
+     * Sanitizar campo de estado de publicación
+     */
+    public function sanitize_post_status_field($value) {
+        $allowed = array('draft', 'publish', 'pending');
+        if (in_array($value, $allowed, true)) {
+            return $value;
+        }
+        return 'draft';
     }
 
     /**

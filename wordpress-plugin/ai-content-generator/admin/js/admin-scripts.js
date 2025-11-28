@@ -16,6 +16,7 @@
             this.bindEvents();
             this.initTabs();
             this.initModelSuggestions();
+            this.initSortableTopics();
         },
 
         bindEvents: function() {
@@ -37,6 +38,26 @@
             // Watermark image selector
             $(document).on('click', '#aicg-select-watermark', this.selectWatermark);
             $(document).on('click', '#aicg-remove-watermark', this.removeWatermark);
+
+            // News featured image selector
+            $(document).on('click', '#aicg-select-news-featured', this.selectNewsFeatured);
+            $(document).on('click', '#aicg-remove-news-featured', this.removeNewsFeatured);
+
+            // Reference style preview
+            $(document).on('change', '#aicg_reference_style', this.updateReferencePreview);
+
+            // Reference color picker sync
+            $(document).on('input change', '#aicg_reference_color', this.syncColorToText);
+            $(document).on('input change', '#aicg_reference_color_text', this.syncTextToColor);
+
+            // Update existing post toggle
+            $(document).on('change', '#aicg_news_update_existing', this.toggleExistingPostSelector);
+
+            // Reset system prompt
+            $(document).on('click', '#aicg-reset-system-prompt', this.resetSystemPrompt);
+
+            // Schedule frequency change - show/hide time hint
+            $(document).on('change', '#aicg_schedule_news_frequency', this.toggleScheduleTimeHint);
         },
 
         initTabs: function() {
@@ -62,6 +83,30 @@
             $('#aicg-model-suggestions p').hide();
             // Mostrar solo la del proveedor seleccionado
             $(`#aicg-model-suggestions p[data-provider="${provider}"]`).show();
+        },
+
+        initSortableTopics: function() {
+            const container = $('#aicg-news-topics-container');
+            if (container.length && typeof $.fn.sortable !== 'undefined') {
+                container.sortable({
+                    handle: '.aicg-drag-handle',
+                    items: '.aicg-sortable-item',
+                    axis: 'y',
+                    cursor: 'move',
+                    opacity: 0.7,
+                    placeholder: 'aicg-sortable-placeholder',
+                    update: function() {
+                        SettingsPage.reindexTopics();
+                    }
+                });
+            }
+        },
+
+        reindexTopics: function() {
+            $('#aicg-news-topics-container .aicg-news-topic-row').each(function(index) {
+                $(this).find('.aicg-topic-nombre').attr('name', `aicg_news_topics[${index}][nombre]`);
+                $(this).find('.aicg-topic-imagen').attr('name', `aicg_news_topics[${index}][imagen]`);
+            });
         },
 
         handleTabClick: function(e) {
@@ -135,17 +180,18 @@
             const index = container.find('.aicg-news-topic-row').length;
 
             const row = `
-                <div class="aicg-news-topic-row">
+                <div class="aicg-news-topic-row aicg-sortable-item">
+                    <span class="aicg-drag-handle dashicons dashicons-menu" title="Arrastrar para reordenar"></span>
                     <input type="text"
                            name="aicg_news_topics[${index}][nombre]"
                            value=""
                            placeholder="Nombre del tema"
-                           class="regular-text">
+                           class="regular-text aicg-topic-nombre">
                     <input type="url"
                            name="aicg_news_topics[${index}][imagen]"
                            value=""
                            placeholder="URL de imagen (opcional)"
-                           class="regular-text">
+                           class="regular-text aicg-topic-imagen">
                     <button type="button" class="button aicg-remove-topic">
                         <span class="dashicons dashicons-trash"></span>
                     </button>
@@ -153,11 +199,15 @@
             `;
 
             container.append(row);
+            // Reinicializar sortable después de agregar nuevo elemento
+            SettingsPage.initSortableTopics();
         },
 
         removeNewsTopic: function(e) {
             e.preventDefault();
             $(this).closest('.aicg-news-topic-row').remove();
+            // Reindexar después de eliminar
+            SettingsPage.reindexTopics();
         },
 
         selectWatermark: function(e) {
@@ -185,6 +235,118 @@
             $('#aicg_watermark_image').val('');
             $('#aicg-watermark-preview').empty();
             $(this).hide();
+        },
+
+        selectNewsFeatured: function(e) {
+            e.preventDefault();
+
+            const frame = wp.media({
+                title: 'Seleccionar Imagen Destacada para Noticias',
+                button: { text: 'Usar esta imagen' },
+                multiple: false,
+                library: { type: 'image' }
+            });
+
+            frame.on('select', function() {
+                const attachment = frame.state().get('selection').first().toJSON();
+                $('#aicg_news_featured_image').val(attachment.id);
+                $('#aicg-news-featured-preview').html(`<img src="${attachment.url}" alt="Featured">`);
+                $('#aicg-remove-news-featured').show();
+            });
+
+            frame.open();
+        },
+
+        removeNewsFeatured: function(e) {
+            e.preventDefault();
+            $('#aicg_news_featured_image').val('');
+            $('#aicg-news-featured-preview').empty();
+            $(this).hide();
+        },
+
+        updateReferencePreview: function() {
+            const style = $(this).val();
+
+            // Hide all previews
+            $('.aicg-reference-preview > div').hide();
+
+            // Show selected preview
+            $(`.aicg-preview-${style}`).show();
+        },
+
+        syncColorToText: function() {
+            const color = $(this).val();
+            $('#aicg_reference_color_text').val(color);
+            SettingsPage.updatePreviewColors(color);
+        },
+
+        syncTextToColor: function() {
+            let color = $(this).val();
+
+            // Validate hex format
+            if (/^#[0-9A-Fa-f]{6}$/.test(color) || /^#[0-9A-Fa-f]{3}$/.test(color)) {
+                $('#aicg_reference_color').val(color);
+                SettingsPage.updatePreviewColors(color);
+            }
+        },
+
+        updatePreviewColors: function(color) {
+            // Update circle and square backgrounds
+            $('.aicg-preview-circle a, .aicg-preview-square a').css('background', color);
+
+            // Update inline link color
+            $('.aicg-preview-inline a').css('color', color);
+
+            // Update badge colors (light background, dark text)
+            const bgColor = SettingsPage.hexToRgba(color, 0.15);
+            $('.aicg-preview-badge a').css({
+                'background': bgColor,
+                'color': color
+            });
+        },
+
+        hexToRgba: function(hex, alpha) {
+            // Remove #
+            hex = hex.replace('#', '');
+
+            // Expand short format
+            if (hex.length === 3) {
+                hex = hex[0] + hex[0] + hex[1] + hex[1] + hex[2] + hex[2];
+            }
+
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+
+            return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+        },
+
+        toggleExistingPostSelector: function() {
+            const checked = $(this).is(':checked');
+            if (checked) {
+                $('#aicg-existing-post-selector').slideDown();
+            } else {
+                $('#aicg-existing-post-selector').slideUp();
+            }
+        },
+
+        resetSystemPrompt: function() {
+            const defaultPrompt = $(this).data('default');
+            $('#aicg_news_system_prompt').val(defaultPrompt);
+        },
+
+        toggleScheduleTimeHint: function() {
+            const frequency = $(this).val();
+            const $hint = $('#aicg-schedule-time-hint');
+            const $timeSelect = $('#aicg_schedule_news_time');
+
+            if (frequency === 'hourly') {
+                $hint.hide();
+                $timeSelect.prop('disabled', true).css('opacity', '0.5');
+            } else {
+                $hint.show();
+                $timeSelect.prop('disabled', false).css('opacity', '1');
+            }
         }
     };
 

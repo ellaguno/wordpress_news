@@ -300,23 +300,28 @@ if (!defined('ABSPATH')) {
                                 <label><?php esc_html_e('Temas de Noticias', 'ai-content-generator'); ?></label>
                             </th>
                             <td>
-                                <div id="aicg-news-topics-container">
+                                <p class="description" style="margin-bottom: 10px;">
+                                    <span class="dashicons dashicons-move" style="color: #999;"></span>
+                                    <?php esc_html_e('Arrastra para reordenar los temas. El orden se reflejará en el resumen generado.', 'ai-content-generator'); ?>
+                                </p>
+                                <div id="aicg-news-topics-container" class="aicg-sortable-container">
                                     <?php
                                     $news_topics = get_option('aicg_news_topics', array());
                                     if (!empty($news_topics)) :
                                         foreach ($news_topics as $index => $topic) :
                                     ?>
-                                        <div class="aicg-news-topic-row">
+                                        <div class="aicg-news-topic-row aicg-sortable-item">
+                                            <span class="aicg-drag-handle dashicons dashicons-menu" title="<?php esc_attr_e('Arrastrar para reordenar', 'ai-content-generator'); ?>"></span>
                                             <input type="text"
                                                    name="aicg_news_topics[<?php echo $index; ?>][nombre]"
                                                    value="<?php echo esc_attr($topic['nombre']); ?>"
                                                    placeholder="<?php esc_attr_e('Nombre del tema', 'ai-content-generator'); ?>"
-                                                   class="regular-text">
+                                                   class="regular-text aicg-topic-nombre">
                                             <input type="url"
                                                    name="aicg_news_topics[<?php echo $index; ?>][imagen]"
-                                                   value="<?php echo esc_attr($topic['imagen']); ?>"
+                                                   value="<?php echo esc_attr(isset($topic['imagen']) ? $topic['imagen'] : ''); ?>"
                                                    placeholder="<?php esc_attr_e('URL de imagen (opcional)', 'ai-content-generator'); ?>"
-                                                   class="regular-text">
+                                                   class="regular-text aicg-topic-imagen">
                                             <button type="button" class="button aicg-remove-topic">
                                                 <span class="dashicons dashicons-trash"></span>
                                             </button>
@@ -335,6 +340,277 @@ if (!defined('ABSPATH')) {
                                 </p>
                             </td>
                         </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_post_type"><?php esc_html_e('Tipo de Publicación', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $news_post_type = get_option('aicg_news_post_type', 'post'); ?>
+                                <select name="aicg_news_post_type" id="aicg_news_post_type">
+                                    <option value="post" <?php selected($news_post_type, 'post'); ?>><?php esc_html_e('Entrada (Post)', 'ai-content-generator'); ?></option>
+                                    <option value="page" <?php selected($news_post_type, 'page'); ?>><?php esc_html_e('Página (Page)', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Elige si los resúmenes de noticias se crean como entradas o como páginas.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_content_format"><?php esc_html_e('Formato de Contenido', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $content_format = get_option('aicg_content_format', 'gutenberg'); ?>
+                                <select name="aicg_content_format" id="aicg_content_format">
+                                    <option value="gutenberg" <?php selected($content_format, 'gutenberg'); ?>><?php esc_html_e('Bloques Gutenberg (recomendado)', 'ai-content-generator'); ?></option>
+                                    <option value="classic" <?php selected($content_format, 'classic'); ?>><?php esc_html_e('HTML Clásico', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Gutenberg genera contenido nativo compatible con el editor de bloques. HTML Clásico es para editores antiguos.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_featured_image"><?php esc_html_e('Imagen Destacada', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $featured_id = get_option('aicg_news_featured_image', 0);
+                                $featured_url = $featured_id ? wp_get_attachment_url($featured_id) : '';
+                                ?>
+                                <input type="hidden"
+                                       name="aicg_news_featured_image"
+                                       id="aicg_news_featured_image"
+                                       value="<?php echo esc_attr($featured_id); ?>">
+                                <button type="button" class="button" id="aicg-select-news-featured">
+                                    <?php esc_html_e('Seleccionar Imagen', 'ai-content-generator'); ?>
+                                </button>
+                                <button type="button" class="button" id="aicg-remove-news-featured" <?php echo $featured_id ? '' : 'style="display:none;"'; ?>>
+                                    <?php esc_html_e('Eliminar', 'ai-content-generator'); ?>
+                                </button>
+                                <div id="aicg-news-featured-preview" class="aicg-image-preview">
+                                    <?php if ($featured_url) : ?>
+                                        <img src="<?php echo esc_url($featured_url); ?>" alt="Featured">
+                                    <?php endif; ?>
+                                </div>
+                                <p class="description">
+                                    <?php esc_html_e('Imagen fija que se usará como imagen destacada del post de noticias. Si no se selecciona, no se asignará imagen destacada.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_generate_image"><?php esc_html_e('Imagen Generada por IA', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <label>
+                                    <input type="checkbox"
+                                           name="aicg_news_generate_image"
+                                           id="aicg_news_generate_image"
+                                           value="1"
+                                           <?php checked(get_option('aicg_news_generate_image', false)); ?>>
+                                    <?php esc_html_e('Generar imagen con IA basada en los titulares', 'ai-content-generator'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('La imagen generada se insertará al inicio del contenido del resumen (debajo del título, antes del texto).', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_reference_style"><?php esc_html_e('Estilo de Referencias', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $ref_style = get_option('aicg_reference_style', 'inline'); ?>
+                                <select name="aicg_reference_style" id="aicg_reference_style">
+                                    <option value="inline" <?php selected($ref_style, 'inline'); ?>><?php esc_html_e('En línea (superíndice simple)', 'ai-content-generator'); ?></option>
+                                    <option value="circle" <?php selected($ref_style, 'circle'); ?>><?php esc_html_e('Círculos (número en círculo)', 'ai-content-generator'); ?></option>
+                                    <option value="square" <?php selected($ref_style, 'square'); ?>><?php esc_html_e('Cuadrados (número en cuadrado)', 'ai-content-generator'); ?></option>
+                                    <option value="badge" <?php selected($ref_style, 'badge'); ?>><?php esc_html_e('Badge (estilo etiqueta)', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Cómo se muestran los números de referencia a las fuentes de noticias.', 'ai-content-generator'); ?>
+                                </p>
+
+                                <!-- Vista previa de estilos -->
+                                <div class="aicg-reference-preview" style="margin-top: 15px; padding: 15px; background: #f9f9f9; border-radius: 4px;">
+                                    <strong style="display: block; margin-bottom: 10px;"><?php esc_html_e('Vista previa:', 'ai-content-generator'); ?></strong>
+                                    <div class="aicg-preview-inline" style="display: <?php echo $ref_style === 'inline' ? 'block' : 'none'; ?>;">
+                                        <?php esc_html_e('Texto de ejemplo', 'ai-content-generator'); ?> <sup><a href="#" style="color: #0073aa;"><strong>1</strong></a></sup> <sup><a href="#" style="color: #0073aa;"><strong>2</strong></a></sup> <sup><a href="#" style="color: #0073aa;"><strong>3</strong></a></sup>
+                                    </div>
+                                    <div class="aicg-preview-circle" style="display: <?php echo $ref_style === 'circle' ? 'block' : 'none'; ?>;">
+                                        <?php esc_html_e('Texto de ejemplo', 'ai-content-generator'); ?>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 50%; font-size: 12px; text-decoration: none; margin: 0 2px;">1</a>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 50%; font-size: 12px; text-decoration: none; margin: 0 2px;">2</a>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 50%; font-size: 12px; text-decoration: none; margin: 0 2px;">3</a>
+                                    </div>
+                                    <div class="aicg-preview-square" style="display: <?php echo $ref_style === 'square' ? 'block' : 'none'; ?>;">
+                                        <?php esc_html_e('Texto de ejemplo', 'ai-content-generator'); ?>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 3px; font-size: 12px; text-decoration: none; margin: 0 2px;">1</a>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 3px; font-size: 12px; text-decoration: none; margin: 0 2px;">2</a>
+                                        <a href="#" style="display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; background: #0073aa; color: white; border-radius: 3px; font-size: 12px; text-decoration: none; margin: 0 2px;">3</a>
+                                    </div>
+                                    <div class="aicg-preview-badge" style="display: <?php echo $ref_style === 'badge' ? 'block' : 'none'; ?>;">
+                                        <?php esc_html_e('Texto de ejemplo', 'ai-content-generator'); ?>
+                                        <a href="#" style="display: inline-block; padding: 2px 8px; background: #e7f3ff; color: #0073aa; border-radius: 10px; font-size: 11px; text-decoration: none; margin: 0 2px;">1</a>
+                                        <a href="#" style="display: inline-block; padding: 2px 8px; background: #e7f3ff; color: #0073aa; border-radius: 10px; font-size: 11px; text-decoration: none; margin: 0 2px;">2</a>
+                                        <a href="#" style="display: inline-block; padding: 2px 8px; background: #e7f3ff; color: #0073aa; border-radius: 10px; font-size: 11px; text-decoration: none; margin: 0 2px;">3</a>
+                                    </div>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_reference_color"><?php esc_html_e('Color de Referencias', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $ref_color = get_option('aicg_reference_color', '#0073aa'); ?>
+                                <input type="color"
+                                       name="aicg_reference_color"
+                                       id="aicg_reference_color"
+                                       value="<?php echo esc_attr($ref_color); ?>"
+                                       style="width: 60px; height: 30px; padding: 0; border: 1px solid #ddd;">
+                                <input type="text"
+                                       id="aicg_reference_color_text"
+                                       value="<?php echo esc_attr($ref_color); ?>"
+                                       class="small-text"
+                                       style="margin-left: 10px;">
+                                <p class="description">
+                                    <?php esc_html_e('Color principal para los números de referencia.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_reference_orientation"><?php esc_html_e('Orientación de Referencias', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $ref_orientation = get_option('aicg_reference_orientation', 'horizontal'); ?>
+                                <select name="aicg_reference_orientation" id="aicg_reference_orientation">
+                                    <option value="horizontal" <?php selected($ref_orientation, 'horizontal'); ?>><?php esc_html_e('Horizontal (en línea)', 'ai-content-generator'); ?></option>
+                                    <option value="vertical" <?php selected($ref_orientation, 'vertical'); ?>><?php esc_html_e('Vertical (uno debajo del otro)', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Cómo se disponen los números de referencia al final de cada sección.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_update_existing"><?php esc_html_e('Actualizar Existente', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <label>
+                                    <input type="checkbox"
+                                           name="aicg_news_update_existing"
+                                           id="aicg_news_update_existing"
+                                           value="1"
+                                           <?php checked(get_option('aicg_news_update_existing', false)); ?>>
+                                    <?php esc_html_e('Actualizar la misma entrada/página en lugar de crear una nueva', 'ai-content-generator'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('Si está activo, el resumen de noticias siempre actualizará el mismo post, manteniendo la URL permanente.', 'ai-content-generator'); ?>
+                                </p>
+
+                                <div id="aicg-existing-post-selector" style="margin-top: 15px; <?php echo get_option('aicg_news_update_existing', false) ? '' : 'display: none;'; ?>">
+                                    <label for="aicg_news_target_post"><?php esc_html_e('Entrada/Página a actualizar:', 'ai-content-generator'); ?></label>
+                                    <?php
+                                    $target_post_id = get_option('aicg_news_target_post', 0);
+                                    $news_post_type = get_option('aicg_news_post_type', 'post');
+                                    ?>
+                                    <select name="aicg_news_target_post" id="aicg_news_target_post" style="min-width: 300px;">
+                                        <option value="0"><?php esc_html_e('-- Crear automáticamente en primera ejecución --', 'ai-content-generator'); ?></option>
+                                        <?php
+                                        $existing_posts = get_posts(array(
+                                            'post_type' => array('post', 'page'),
+                                            'posts_per_page' => 50,
+                                            'orderby' => 'modified',
+                                            'order' => 'DESC',
+                                            'meta_query' => array(
+                                                array(
+                                                    'key' => '_aicg_type',
+                                                    'value' => 'news',
+                                                    'compare' => '='
+                                                )
+                                            )
+                                        ));
+
+                                        if (empty($existing_posts)) {
+                                            // Si no hay posts generados, mostrar todos
+                                            $existing_posts = get_posts(array(
+                                                'post_type' => array('post', 'page'),
+                                                'posts_per_page' => 50,
+                                                'orderby' => 'modified',
+                                                'order' => 'DESC'
+                                            ));
+                                        }
+
+                                        foreach ($existing_posts as $p) :
+                                            $type_label = $p->post_type === 'page' ? __('Página', 'ai-content-generator') : __('Entrada', 'ai-content-generator');
+                                        ?>
+                                            <option value="<?php echo esc_attr($p->ID); ?>" <?php selected($target_post_id, $p->ID); ?>>
+                                                <?php echo esc_html(sprintf('[%s] %s (ID: %d)', $type_label, $p->post_title, $p->ID)); ?>
+                                            </option>
+                                        <?php endforeach; ?>
+                                    </select>
+                                    <p class="description">
+                                        <?php esc_html_e('Selecciona el post a actualizar o deja en automático para crear uno nuevo la primera vez.', 'ai-content-generator'); ?>
+                                    </p>
+                                </div>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_system_prompt"><?php esc_html_e('Prompt del Sistema', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $default_system = 'Eres un periodista experto que resume noticias de forma objetiva y precisa. Usas HTML puro, nunca Markdown.';
+                                $system_prompt = get_option('aicg_news_system_prompt', $default_system);
+                                ?>
+                                <textarea name="aicg_news_system_prompt"
+                                          id="aicg_news_system_prompt"
+                                          rows="3"
+                                          cols="60"
+                                          class="large-text"><?php echo esc_textarea($system_prompt); ?></textarea>
+                                <p class="description">
+                                    <?php esc_html_e('Define el rol y estilo de la IA. Ejemplos: "Eres un periodista sarcástico...", "Eres un analista político crítico..."', 'ai-content-generator'); ?>
+                                </p>
+                                <button type="button" class="button button-small" id="aicg-reset-system-prompt" data-default="<?php echo esc_attr($default_system); ?>">
+                                    <?php esc_html_e('Restaurar por defecto', 'ai-content-generator'); ?>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_user_prompt"><?php esc_html_e('Instrucciones Adicionales', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $user_prompt = get_option('aicg_news_user_prompt', '');
+                                ?>
+                                <textarea name="aicg_news_user_prompt"
+                                          id="aicg_news_user_prompt"
+                                          rows="4"
+                                          cols="60"
+                                          class="large-text"
+                                          placeholder="<?php esc_attr_e('Ej: Usa un tono sarcástico. Incluye comentarios irónicos sobre la situación política...', 'ai-content-generator'); ?>"><?php echo esc_textarea($user_prompt); ?></textarea>
+                                <p class="description">
+                                    <?php esc_html_e('Instrucciones adicionales que se agregarán al prompt. Puedes definir el tono, estilo, o enfoque específico.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
                     </table>
                 </div>
 
@@ -343,6 +619,39 @@ if (!defined('ABSPATH')) {
                     <h2><?php esc_html_e('Configuración de Imágenes', 'ai-content-generator'); ?></h2>
 
                     <table class="form-table">
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_image_size"><?php esc_html_e('Tamaño de Imagen', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $image_size = get_option('aicg_image_size', '1792x1024'); ?>
+                                <select name="aicg_image_size" id="aicg_image_size">
+                                    <option value="1792x1024" <?php selected($image_size, '1792x1024'); ?>>1792x1024 - <?php esc_html_e('Horizontal (paisaje)', 'ai-content-generator'); ?></option>
+                                    <option value="1024x1024" <?php selected($image_size, '1024x1024'); ?>>1024x1024 - <?php esc_html_e('Cuadrado', 'ai-content-generator'); ?></option>
+                                    <option value="1024x1792" <?php selected($image_size, '1024x1792'); ?>>1024x1792 - <?php esc_html_e('Vertical (retrato)', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Orientación de las imágenes generadas. Horizontal es recomendado para imágenes destacadas de blog.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_image_quality"><?php esc_html_e('Calidad de Imagen', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $image_quality = get_option('aicg_image_quality', 'standard'); ?>
+                                <select name="aicg_image_quality" id="aicg_image_quality">
+                                    <option value="standard" <?php selected($image_quality, 'standard'); ?>><?php esc_html_e('Estándar', 'ai-content-generator'); ?></option>
+                                    <option value="hd" <?php selected($image_quality, 'hd'); ?>><?php esc_html_e('HD (Mayor costo)', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('HD genera imágenes con más detalle pero cuesta el doble.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
                         <tr>
                             <th scope="row">
                                 <label for="aicg_watermark_enabled"><?php esc_html_e('Marca de Agua', 'ai-content-generator'); ?></label>
@@ -456,15 +765,74 @@ if (!defined('ABSPATH')) {
                                     <option value="daily" <?php selected($freq_news, 'daily'); ?>><?php esc_html_e('Diario', 'ai-content-generator'); ?></option>
                                 </select>
 
+                                <br><br>
+                                <label for="aicg_schedule_news_time"><?php esc_html_e('Hora de ejecución:', 'ai-content-generator'); ?></label>
+                                <?php
+                                $schedule_time = get_option('aicg_schedule_news_time', '08:00');
+                                $wp_tz = wp_timezone();
+                                ?>
+                                <select name="aicg_schedule_news_time" id="aicg_schedule_news_time">
+                                    <?php
+                                    for ($h = 0; $h < 24; $h++) {
+                                        $time_val = sprintf('%02d:00', $h);
+                                        // Crear timestamp para hoy a esa hora en zona horaria de WP
+                                        $today_at_hour = new DateTime('today', $wp_tz);
+                                        $today_at_hour->setTime($h, 0, 0);
+                                        $time_label = date_i18n('g:i A', $today_at_hour->getTimestamp());
+                                        printf(
+                                            '<option value="%s" %s>%s</option>',
+                                            esc_attr($time_val),
+                                            selected($schedule_time, $time_val, false),
+                                            esc_html($time_label)
+                                        );
+                                    }
+                                    ?>
+                                </select>
+                                <span class="description" style="margin-left: 10px;">
+                                    <?php
+                                    // Mostrar zona horaria actual
+                                    printf(
+                                        esc_html__('(Zona horaria: %s)', 'ai-content-generator'),
+                                        $wp_tz->getName()
+                                    );
+                                    ?>
+                                </span>
+                                <p class="description" id="aicg-schedule-time-hint" style="<?php echo $freq_news === 'hourly' ? 'display:none;' : ''; ?>">
+                                    <?php esc_html_e('Para "Dos veces al día": se ejecutará a esta hora y 12 horas después.', 'ai-content-generator'); ?>
+                                </p>
+
                                 <?php
                                 $next_news = wp_next_scheduled('aicg_generate_scheduled_news');
                                 if ($next_news) :
                                 ?>
-                                <p class="description">
+                                <p class="description" style="margin-top: 10px; font-weight: bold;">
                                     <?php printf(
                                         esc_html__('Próxima ejecución: %s', 'ai-content-generator'),
                                         date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_news)
                                     ); ?>
+                                </p>
+                                <?php endif; ?>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_schedule_post_status"><?php esc_html_e('Estado de Publicación', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $post_status = get_option('aicg_schedule_post_status', 'draft'); ?>
+                                <select name="aicg_schedule_post_status" id="aicg_schedule_post_status">
+                                    <option value="draft" <?php selected($post_status, 'draft'); ?>><?php esc_html_e('Borrador (revisar antes de publicar)', 'ai-content-generator'); ?></option>
+                                    <option value="publish" <?php selected($post_status, 'publish'); ?>><?php esc_html_e('Publicado (publicar automáticamente)', 'ai-content-generator'); ?></option>
+                                    <option value="pending" <?php selected($post_status, 'pending'); ?>><?php esc_html_e('Pendiente de revisión', 'ai-content-generator'); ?></option>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('Estado con el que se crearán los artículos y noticias programados.', 'ai-content-generator'); ?>
+                                </p>
+                                <?php if ($post_status === 'publish') : ?>
+                                <p class="description" style="color: #d63638;">
+                                    <span class="dashicons dashicons-warning"></span>
+                                    <?php esc_html_e('Advertencia: El contenido se publicará sin revisión previa.', 'ai-content-generator'); ?>
                                 </p>
                                 <?php endif; ?>
                             </td>
