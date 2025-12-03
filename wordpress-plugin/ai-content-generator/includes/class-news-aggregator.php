@@ -23,14 +23,26 @@ class AICG_News_Aggregator {
     private $provider;
 
     /**
-     * URLs de Google News
+     * URLs de fuentes RSS por defecto
      *
      * @var array
      */
-    private $news_sources = array(
-        'headlines' => 'https://news.google.com/news/rss/headlines/section/topic/WORLD?hl=es-419&gl=MX&ceid=MX:es-419',
-        'nation' => 'https://news.google.com/news/rss/headlines/section/topic/NATION?hl=es-419&gl=MX&ceid=MX:es-419',
-        'breaking' => 'https://news.google.com/news/rss/headlines/section/topic/BREAKING?hl=es-419&gl=MX&ceid=MX:es-419'
+    private $default_sources = array(
+        array(
+            'nombre' => 'Google News - Mundo',
+            'url' => 'https://news.google.com/news/rss/headlines/section/topic/WORLD?hl=es-419&gl=MX&ceid=MX:es-419',
+            'activo' => true
+        ),
+        array(
+            'nombre' => 'Google News - Nacional',
+            'url' => 'https://news.google.com/news/rss/headlines/section/topic/NATION?hl=es-419&gl=MX&ceid=MX:es-419',
+            'activo' => true
+        ),
+        array(
+            'nombre' => 'Google News - Última Hora',
+            'url' => 'https://news.google.com/news/rss/headlines/section/topic/BREAKING?hl=es-419&gl=MX&ceid=MX:es-419',
+            'activo' => true
+        )
     );
 
     /**
@@ -54,6 +66,14 @@ class AICG_News_Aggregator {
      * @return array|WP_Error
      */
     public function generate($args = array()) {
+        // Registrar handler para capturar errores fatales
+        register_shutdown_function(function() {
+            $error = error_get_last();
+            if ($error && in_array($error['type'], array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR))) {
+                error_log('[AICG] ERROR FATAL en generate(): ' . $error['message'] . ' en ' . $error['file'] . ':' . $error['line']);
+            }
+        });
+
         $defaults = array(
             'topics' => array(),
             'include_headlines' => true,
@@ -103,10 +123,12 @@ class AICG_News_Aggregator {
 
             $content_parts = array('<div class="aicg-news-summary">');
 
-            // Paso 1: Obtener y resumir titulares principales
+            // Obtener titulares principales (necesarios para imagen aunque no se muestren)
+            $headlines = $this->fetch_main_headlines();
+            $main_headlines = $headlines; // Guardar para generar imagen después
+
+            // Paso 1: Resumir titulares principales (solo si include_headlines está activo)
             if ($args['include_headlines']) {
-                $headlines = $this->fetch_main_headlines();
-                $main_headlines = $headlines; // Guardar para generar imagen después
                 if (!empty($headlines)) {
                     $summary_result = $this->generate_headlines_summary($headlines);
                     if (!is_wp_error($summary_result) && !empty($summary_result['content'])) {
@@ -114,6 +136,8 @@ class AICG_News_Aggregator {
                         $content_parts[] = '<h2>' . esc_html__('Resumen del Día', 'ai-content-generator') . '</h2>';
                         $content_parts[] = $summary_result['content'];
                         $content_parts[] = '</div>';
+                        // Marcador para insertar imagen generada después del resumen
+                        $content_parts[] = '<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->';
                         $result['tokens_used'] += isset($summary_result['usage']['total_tokens']) ? $summary_result['usage']['total_tokens'] : 0;
                         $result['cost'] += isset($summary_result['cost']) ? $summary_result['cost'] : 0;
                     } elseif (is_wp_error($summary_result)) {
@@ -123,6 +147,9 @@ class AICG_News_Aggregator {
                 } else {
                     error_log('[AICG] No se obtuvieron titulares principales');
                 }
+            } else {
+                // Agregar marcador para imagen al inicio aunque no haya resumen
+                $content_parts[] = '<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->';
             }
 
             // Paso 2: Procesar cada tema
@@ -132,15 +159,19 @@ class AICG_News_Aggregator {
                 $topics_images[$topic_config['nombre']] = $topic_config['imagen'] ?? '';
             }
 
+            // URLs usadas en esta sesión (para evitar repetición entre temas)
+            $session_used_urls = array();
+
             foreach ($args['topics'] as $topic) {
                 error_log('[AICG] Procesando tema: ' . $topic);
                 $news = $this->fetch_news_for_topic($topic);
                 $original_count = count($news);
                 error_log('[AICG] Noticias obtenidas para "' . $topic . '": ' . $original_count);
 
-                // Filtrar URLs ya usadas
-                $news = array_filter($news, function($item) use ($used_urls) {
-                    return !in_array($item['link'], $used_urls);
+                // Filtrar URLs ya usadas (base de datos + sesión actual)
+                $all_used_urls = array_merge($used_urls, $session_used_urls);
+                $news = array_filter($news, function($item) use ($all_used_urls) {
+                    return !in_array($item['link'], $all_used_urls);
                 });
                 error_log('[AICG] Noticias después de filtrar usadas para "' . $topic . '": ' . count($news));
 
@@ -177,8 +208,10 @@ class AICG_News_Aggregator {
                 $result['news_count'] += count($news);
                 $result['topics_processed'][] = $topic;
 
-                // Marcar URLs como usadas
-                $this->mark_urls_as_used(array_column($news, 'link'));
+                // Marcar URLs como usadas (en DB y en sesión actual)
+                $news_urls = array_column($news, 'link');
+                $this->mark_urls_as_used($news_urls);
+                $session_used_urls = array_merge($session_used_urls, $news_urls);
 
                 // Construir HTML de la sección
                 $content_parts[] = '<div class="aicg-topic-section">';
@@ -195,6 +228,7 @@ class AICG_News_Aggregator {
                 $ref_style = get_option('aicg_reference_style', 'inline');
                 $ref_color = get_option('aicg_reference_color', '#0073aa');
                 $ref_orientation = get_option('aicg_reference_orientation', 'horizontal');
+                $ref_size = intval(get_option('aicg_reference_size', 24));
 
                 // Estilos según orientación - horizontal por defecto con estilos explícitos
                 if ($ref_orientation === 'vertical') {
@@ -210,48 +244,67 @@ class AICG_News_Aggregator {
                 foreach ($news as $index => $item) {
                     $num = $index + 1;
                     $link = esc_url($item['link']);
+                    // Extraer nombre de la fuente para el tooltip
+                    $source_name = !empty($item['source']) ? $item['source'] : '';
+                    if (empty($source_name) && !empty($item['title'])) {
+                        // Intentar extraer fuente del título (formato: "Título - Fuente")
+                        if (preg_match('/\s-\s([^-]+)$/', $item['title'], $matches)) {
+                            $source_name = trim($matches[1]);
+                        }
+                    }
+                    $tooltip = !empty($source_name) ? esc_attr($source_name) : esc_attr__('Ver fuente', 'ai-content-generator');
 
                     // Generar SVG con el número (no será leído por lectores de pantalla)
-                    $svg_number = $this->generate_number_svg($num, $ref_color, $ref_style);
+                    $svg_number = $this->generate_number_svg($num, $ref_color, $ref_style, $ref_size);
 
                     switch ($ref_style) {
                         case 'circle':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" class="aicg-ref-circle" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-circle" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
                                 $link,
+                                $tooltip,
+                                $ref_size,
+                                $ref_size,
                                 $svg_number
                             );
                             break;
 
                         case 'square':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" class="aicg-ref-square" style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 24px; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-square" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
                                 $link,
+                                $tooltip,
+                                $ref_size,
+                                $ref_size,
                                 $svg_number
                             );
                             break;
 
                         case 'badge':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" class="aicg-ref-badge" style="display: inline-flex; align-items: center; justify-content: center; height: 24px; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-badge" style="display: inline-flex; align-items: center; justify-content: center; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
                                 $link,
-                                $this->generate_badge_svg($num, $ref_color)
+                                $tooltip,
+                                $ref_size,
+                                $this->generate_badge_svg($num, $ref_color, $ref_size)
                             );
                             break;
 
                         case 'inline':
                         default:
+                            $inline_size = max(10, intval($ref_size * 0.6)); // Tamaño proporcional para inline
                             $refs_html .= sprintf(
-                                '<sup><a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" style="text-decoration: none;">%s</a></sup> ',
+                                '<sup><a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" style="text-decoration: none;">%s</a></sup> ',
                                 $link,
-                                $this->generate_inline_svg($num, $ref_color)
+                                $tooltip,
+                                $this->generate_inline_svg($num, $ref_color, $inline_size)
                             );
                             break;
                     }
                 }
 
                 // Agregar div de referencias como una sola línea
-                $content_parts[] = '<div class="aicg-references aicg-ref-' . esc_attr($ref_style) . '" style="' . $orientation_style . '" data-color="' . esc_attr($ref_color) . '">' . $refs_html . '</div>';
+                $content_parts[] = '<div class="aicg-references aicg-ref-' . esc_attr($ref_style) . '" style="' . $orientation_style . '" data-color="' . esc_attr($ref_color) . '" data-size="' . esc_attr($ref_size) . '">' . $refs_html . '</div>';
                 $content_parts[] = '<hr></div>';
             }
 
@@ -277,25 +330,59 @@ class AICG_News_Aggregator {
             $generated_image_data = null;
 
             // Generar imagen con IA si está habilitado
-            if (!empty($args['generate_image']) && !empty($main_headlines)) {
-                $image_result = $this->generate_featured_image($main_headlines);
-                if (!is_wp_error($image_result) && !empty($image_result['attachment_id'])) {
-                    $generated_image_url = wp_get_attachment_url($image_result['attachment_id']);
-                    $generated_image_alt = __('Imagen generada para el resumen de noticias', 'ai-content-generator');
+            error_log('[AICG] generate_image arg: ' . ($args['generate_image'] ? 'true' : 'false'));
+            error_log('[AICG] main_headlines count: ' . count($main_headlines));
 
-                    $generated_image_data = array(
-                        'url' => $generated_image_url,
-                        'alt' => $generated_image_alt,
-                        'id' => $image_result['attachment_id']
-                    );
+            if (!empty($args['generate_image'])) {
+                // Si no hay titulares principales, usar títulos de los temas procesados
+                $headlines_for_image = $main_headlines;
+                if (empty($headlines_for_image) && !empty($result['topics_processed'])) {
+                    error_log('[AICG] No hay titulares principales, usando temas procesados para imagen');
+                    foreach ($result['topics_processed'] as $topic) {
+                        $headlines_for_image[] = array(
+                            'title' => $topic,
+                            'source' => 'Tema del resumen'
+                        );
+                    }
+                }
 
-                    $result['generated_image_id'] = $image_result['attachment_id'];
-                    $result['cost'] += isset($image_result['cost']) ? $image_result['cost'] : 0;
-                    error_log('[AICG] Imagen generada con ID: ' . $image_result['attachment_id']);
-                } elseif (is_wp_error($image_result)) {
-                    error_log('[AICG] Error generando imagen: ' . $image_result->get_error_message());
+                if (!empty($headlines_for_image)) {
+                    error_log('[AICG] Generando imagen con ' . count($headlines_for_image) . ' titulares');
+
+                    // Try-catch específico para generación de imagen
+                    try {
+                        $image_result = $this->generate_featured_image($headlines_for_image);
+                        error_log('[AICG] generate_featured_image retornó: ' . (is_wp_error($image_result) ? 'WP_Error' : 'array'));
+
+                        if (!is_wp_error($image_result) && !empty($image_result['attachment_id'])) {
+                            $generated_image_url = wp_get_attachment_url($image_result['attachment_id']);
+                            $generated_image_alt = __('Imagen generada para el resumen de noticias', 'ai-content-generator');
+
+                            $generated_image_data = array(
+                                'url' => $generated_image_url,
+                                'alt' => $generated_image_alt,
+                                'id' => $image_result['attachment_id']
+                            );
+
+                            $result['generated_image_id'] = $image_result['attachment_id'];
+                            $result['cost'] += isset($image_result['cost']) ? $image_result['cost'] : 0;
+                            error_log('[AICG] Imagen generada con ID: ' . $image_result['attachment_id']);
+                        } elseif (is_wp_error($image_result)) {
+                            error_log('[AICG] Error generando imagen: ' . $image_result->get_error_message());
+                        }
+                    } catch (Exception $img_e) {
+                        error_log('[AICG] Excepción generando imagen: ' . $img_e->getMessage());
+                        // Continuar sin imagen, no fallar todo el proceso
+                    } catch (Error $img_err) {
+                        error_log('[AICG] Error fatal generando imagen: ' . $img_err->getMessage());
+                        // Continuar sin imagen, no fallar todo el proceso
+                    }
+                } else {
+                    error_log('[AICG] No hay titulares disponibles para generar imagen');
                 }
             }
+
+            error_log('[AICG] Continuando después de generación de imagen...');
 
             // Convertir a formato según configuración
             $content_format = get_option('aicg_content_format', 'gutenberg');
@@ -303,6 +390,22 @@ class AICG_News_Aggregator {
             // Si está vacío, usar gutenberg por defecto
             if (empty($content_format)) {
                 $content_format = 'gutenberg';
+            }
+
+            // PRIMERO: Insertar imagen en HTML ANTES de conversión Gutenberg
+            // (El convertidor Gutenberg no preserva comentarios HTML)
+            if ($generated_image_data) {
+                $image_html = sprintf(
+                    '<figure class="aicg-generated-image alignwide" data-image-id="%d"><img src="%s" alt="%s" style="width: 100%%; height: auto; aspect-ratio: 16/9; object-fit: cover; display: block;"></figure>',
+                    intval($generated_image_data['id']),
+                    esc_url($generated_image_data['url']),
+                    esc_attr($generated_image_data['alt'])
+                );
+                $result['content'] = str_replace('<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->', $image_html, $result['content']);
+                error_log('[AICG] Imagen insertada en HTML antes de conversión');
+            } else {
+                // Eliminar marcador si no hay imagen
+                $result['content'] = str_replace('<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->', '', $result['content']);
             }
 
             error_log('[AICG] ========== INICIO CONVERSION GUTENBERG ==========');
@@ -314,46 +417,13 @@ class AICG_News_Aggregator {
                 error_log('[AICG] ENTRANDO al bloque de conversión Gutenberg');
                 error_log('[AICG] HTML antes de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
 
-                // Convertir HTML a bloques Gutenberg
+                // Convertir HTML a bloques Gutenberg (la imagen ya está incluida en el HTML)
                 $result['content'] = AICG_Gutenberg_Converter::convert($result['content']);
 
                 error_log('[AICG] Contenido después de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
-
-                // Insertar imagen generada como bloque al inicio (si hay)
-                if ($generated_image_data) {
-                    $image_block = AICG_Gutenberg_Converter::image_block(
-                        $generated_image_data['url'],
-                        $generated_image_data['alt'],
-                        '',
-                        array(
-                            'align' => 'center',
-                            'sizeSlug' => 'large',
-                            'id' => $generated_image_data['id']
-                        )
-                    );
-                    $result['content'] = $image_block . "\n\n" . $result['content'];
-                }
-
                 error_log('[AICG] Contenido convertido a formato Gutenberg');
             } else {
                 error_log('[AICG] NO se entró al bloque de conversión Gutenberg. Razón: formato="' . $content_format . '", clase_existe=' . (class_exists('AICG_Gutenberg_Converter') ? 'SI' : 'NO'));
-
-                // Formato clásico HTML - insertar imagen al inicio
-                if ($generated_image_data) {
-                    $image_html = sprintf(
-                        '<figure class="aicg-generated-image aligncenter" style="margin: 0 0 20px 0; text-align: center;"><img src="%s" alt="%s" style="max-width: 100%%; height: auto; display: block; margin: 0 auto;"></figure>',
-                        esc_url($generated_image_data['url']),
-                        esc_attr($generated_image_data['alt'])
-                    );
-
-                    // Insertar después del div de apertura
-                    $result['content'] = preg_replace(
-                        '/(<div class="aicg-news-summary">)/',
-                        '$1' . $image_html,
-                        $result['content'],
-                        1
-                    );
-                }
             }
 
             // Usar imagen destacada fija si está configurada
@@ -397,12 +467,25 @@ class AICG_News_Aggregator {
     private function fetch_main_headlines() {
         $headlines = array();
 
-        foreach ($this->news_sources as $source_url) {
-            $news = $this->fetch_rss_feed($source_url);
+        // Obtener fuentes configuradas o usar por defecto
+        $sources = get_option('aicg_news_sources', $this->default_sources);
+        if (empty($sources)) {
+            $sources = $this->default_sources;
+        }
+
+        foreach ($sources as $source) {
+            // Solo procesar fuentes activas
+            if (!isset($source['activo']) || !$source['activo']) {
+                continue;
+            }
+
+            $news = $this->fetch_rss_feed($source['url']);
+            $source_name = !empty($source['nombre']) ? $source['nombre'] : 'RSS Feed';
+
             foreach (array_slice($news, 0, 3) as $item) {
                 $headlines[] = array(
                     'title' => $item['title'],
-                    'source' => isset($item['source']) ? $item['source'] : 'Google News'
+                    'source' => isset($item['source']) && !empty($item['source']) ? $item['source'] : $source_name
                 );
             }
         }
@@ -417,8 +500,227 @@ class AICG_News_Aggregator {
      * @return array
      */
     private function fetch_news_for_topic($topic) {
-        $url = 'https://news.google.com/rss/search?q=' . urlencode($topic) . '&hl=es-419&gl=MX&ceid=MX:es-419';
-        return $this->fetch_rss_feed($url);
+        // Usar plantilla de búsqueda configurable
+        $default_template = 'https://news.google.com/rss/search?q={topic}&hl=es-419&gl=MX&ceid=MX:es-419';
+        $template = get_option('aicg_news_search_template', $default_template);
+
+        if (empty($template)) {
+            $template = $default_template;
+        }
+
+        // Mejorar la búsqueda con términos más específicos según el tema
+        $enhanced_topic = $this->enhance_topic_query($topic);
+        error_log('[AICG] Tema "' . $topic . '" mejorado a: "' . $enhanced_topic . '"');
+
+        $url = str_replace('{topic}', urlencode($enhanced_topic), $template);
+        $news = $this->fetch_rss_feed($url);
+        $count_before_relevance = count($news);
+
+        // Filtrar noticias que no sean relevantes al tema
+        $news = $this->filter_relevant_news($news, $topic);
+        error_log('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . $count_before_relevance . ')');
+
+        return $news;
+    }
+
+    /**
+     * Mejorar la consulta del tema con términos más específicos
+     *
+     * @param string $topic
+     * @return string
+     */
+    private function enhance_topic_query($topic) {
+        // Mapeo de temas a términos de búsqueda más específicos
+        $topic_mappings = array(
+            'internacional' => 'noticias internacionales mundo -México -local',
+            'economía' => 'economía finanzas mercados PIB inflación',
+            'economia' => 'economía finanzas mercados PIB inflación',
+            'ciencia y tecnología' => 'ciencia tecnología innovación investigación científica',
+            'ciencia' => 'descubrimiento científico investigación ciencia',
+            'tecnología' => 'tecnología inteligencia artificial software hardware',
+            'tecnologia' => 'tecnología inteligencia artificial software hardware',
+            'criptomonedas' => 'bitcoin ethereum criptomonedas blockchain crypto',
+            'negocios' => 'negocios empresas corporativo fusiones adquisiciones',
+            'conflictos y guerra' => 'guerra conflicto bélico militar ataque defensa',
+            'deportes' => 'fútbol deportes liga campeón torneo',
+            'entretenimiento' => 'cine películas series televisión celebridades',
+            'salud' => 'salud medicina médico hospital enfermedad tratamiento',
+            'medio ambiente' => 'clima cambio climático medio ambiente ecología',
+            'política' => 'política gobierno elecciones congreso senado',
+            'méxico' => 'México gobierno mexicano CDMX nacional',
+        );
+
+        $topic_lower = strtolower(trim($topic));
+
+        // Buscar coincidencia exacta o parcial
+        if (isset($topic_mappings[$topic_lower])) {
+            return $topic_mappings[$topic_lower];
+        }
+
+        // Buscar coincidencia parcial
+        foreach ($topic_mappings as $key => $value) {
+            if (strpos($topic_lower, $key) !== false || strpos($key, $topic_lower) !== false) {
+                return $value;
+            }
+        }
+
+        // Si no hay mapeo, usar el tema original
+        return $topic;
+    }
+
+    /**
+     * Filtrar noticias que sean relevantes al tema
+     *
+     * @param array $news
+     * @param string $topic
+     * @return array
+     */
+    private function filter_relevant_news($news, $topic) {
+        $topic_lower = strtolower($topic);
+
+        // Determinar si es un tema de deportes
+        $is_sports_topic = $this->is_sports_topic($topic_lower);
+
+        // Palabras clave por tema para validar relevancia
+        $relevance_keywords = array(
+            'internacional' => array('mundo', 'internacional', 'global', 'países', 'naciones', 'extranjero', 'europa', 'asia', 'áfrica', 'estados unidos', 'rusia', 'china'),
+            'economía' => array('economía', 'económico', 'finanzas', 'mercado', 'bolsa', 'inflación', 'pib', 'banco', 'inversión', 'dólar', 'peso'),
+            'economia' => array('economía', 'económico', 'finanzas', 'mercado', 'bolsa', 'inflación', 'pib', 'banco', 'inversión', 'dólar', 'peso'),
+            'ciencia y tecnología' => array('ciencia', 'tecnología', 'científico', 'investigación', 'descubrimiento', 'nasa', 'ia', 'inteligencia artificial'),
+            'tecnología' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
+            'tecnologia' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
+            'criptomonedas' => array('bitcoin', 'crypto', 'criptomoneda', 'ethereum', 'blockchain', 'btc', 'token', 'nft'),
+            'negocios' => array('empresa', 'negocio', 'corporativo', 'ceo', 'fusión', 'adquisición', 'startup', 'compañía'),
+            'conflictos y guerra' => array('guerra', 'conflicto', 'militar', 'ejército', 'ataque', 'bombardeo', 'tropas', 'ucrania', 'gaza', 'israel'),
+            'deportes' => array('fútbol', 'futbol', 'deporte', 'liga', 'gol', 'campeón', 'campeon', 'olimpico', 'olímpico', 'nba', 'nfl', 'mundial', 'jugador', 'equipo', 'partido', 'torneo'),
+            'fútbol' => array('fútbol', 'futbol', 'liga', 'gol', 'partido', 'equipo', 'campeón', 'champions', 'mundial'),
+            'futbol' => array('fútbol', 'futbol', 'liga', 'gol', 'partido', 'equipo', 'campeón', 'champions', 'mundial'),
+            'salud' => array('salud', 'médico', 'hospital', 'enfermedad', 'tratamiento', 'vacuna', 'covid', 'oms'),
+            'méxico' => array('méxico', 'mexicano', 'cdmx', 'amlo', 'sheinbaum', 'gobierno federal'),
+        );
+
+        // Primero: Excluir noticias de deportes si NO es un tema de deportes
+        if (!$is_sports_topic) {
+            $news = $this->exclude_sports_news($news);
+        }
+
+        // Si no hay keywords específicas, devolver las noticias filtradas
+        if (!isset($relevance_keywords[$topic_lower])) {
+            return $news;
+        }
+
+        $keywords = $relevance_keywords[$topic_lower];
+
+        return array_filter($news, function($item) use ($keywords) {
+            $text = strtolower($item['title'] . ' ' . $item['description']);
+            foreach ($keywords as $keyword) {
+                if (strpos($text, $keyword) !== false) {
+                    return true;
+                }
+            }
+            return false;
+        });
+    }
+
+    /**
+     * Verificar si el tema es de deportes
+     *
+     * @param string $topic_lower Tema en minúsculas
+     * @return bool
+     */
+    private function is_sports_topic($topic_lower) {
+        $sports_topics = array(
+            'deportes', 'deporte', 'fútbol', 'futbol', 'football',
+            'básquetbol', 'basquetbol', 'basketball', 'nba',
+            'béisbol', 'beisbol', 'baseball', 'mlb',
+            'tenis', 'tennis', 'golf', 'boxeo', 'box',
+            'fórmula 1', 'formula 1', 'f1', 'automovilismo',
+            'olimpiadas', 'juegos olímpicos', 'juegos olimpicos',
+            'nfl', 'americano', 'fútbol americano',
+            'hockey', 'nhl', 'mls', 'liga mx'
+        );
+
+        foreach ($sports_topics as $sport) {
+            if (strpos($topic_lower, $sport) !== false) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Excluir noticias de deportes
+     *
+     * @param array $news
+     * @return array
+     */
+    private function exclude_sports_news($news) {
+        // Palabras clave que indican contenido deportivo
+        $sports_keywords = array(
+            // Deportes generales
+            'fútbol', 'futbol', 'soccer', 'gol', 'goles',
+            'partido', 'partidos', 'jugador', 'jugadores', 'jugadora',
+            'equipo deportivo', 'entrenador', 'técnico',
+            'campeón', 'campeon', 'campeona', 'campeonato',
+            'torneo', 'liga', 'copa', 'final', 'semifinal',
+            'deporte', 'deportivo', 'deportiva', 'atleta',
+            // Ligas y competiciones
+            'champions league', 'champions', 'uefa', 'fifa',
+            'liga mx', 'liga española', 'la liga', 'premier league',
+            'bundesliga', 'serie a', 'ligue 1',
+            'nba', 'nfl', 'mlb', 'nhl', 'mls',
+            'mundial de fútbol', 'mundial qatar',
+            'olimpiadas', 'olímpico', 'olimpico', 'juegos olímpicos',
+            // Equipos conocidos
+            'real madrid', 'barcelona', 'barça', 'atlético',
+            'america', 'chivas', 'cruz azul', 'pumas', 'tigres',
+            'manchester', 'liverpool', 'chelsea', 'arsenal',
+            'lakers', 'celtics', 'warriors', 'bulls',
+            'yankees', 'dodgers', 'red sox',
+            // Deportes específicos
+            'basquetbol', 'básquetbol', 'basketball', 'baloncesto',
+            'béisbol', 'beisbol', 'baseball',
+            'tenis', 'tennis', 'wimbledon', 'roland garros', 'us open',
+            'golf', 'pga', 'masters',
+            'boxeo', 'box', 'pelea', 'round', 'nocaut', 'knockout',
+            'fórmula 1', 'formula 1', 'f1', 'gran premio', 'automovilismo',
+            'hockey', 'nhl',
+            'natación', 'natacion', 'atletismo',
+            'ciclismo', 'tour de france',
+            // Términos deportivos
+            'fichaje', 'fichajes', 'transferencia', 'traspaso',
+            'lesión deportiva', 'baja médica',
+            'marcador', 'anotación', 'cancha', 'estadio',
+            'arbitro', 'árbitro', 'var',
+            'afición', 'aficionados', 'hinchada', 'porra',
+            // Deportistas (términos genéricos)
+            'delantero', 'portero', 'defensa', 'mediocampista',
+            'pitcher', 'bateador', 'quarterback',
+            // Específicos que mencionaste
+            'testicular', 'cáncer testicular', // para el caso del deportista
+            'thunder', 'okc thunder', 'nikola topic', // caso específico
+        );
+
+        $filtered_count = 0;
+
+        $filtered_news = array_filter($news, function($item) use ($sports_keywords, &$filtered_count) {
+            $text = strtolower($item['title'] . ' ' . $item['description']);
+
+            foreach ($sports_keywords as $keyword) {
+                if (strpos($text, $keyword) !== false) {
+                    $filtered_count++;
+                    return false; // Excluir esta noticia
+                }
+            }
+            return true; // Mantener esta noticia
+        });
+
+        if ($filtered_count > 0) {
+            error_log('[AICG] Excluidas ' . $filtered_count . ' noticias de deportes');
+        }
+
+        return $filtered_news;
     }
 
     /**
@@ -675,13 +977,10 @@ EJEMPLO DE FORMATO:
             $headlines_text[] = $headline['title'];
         }
 
-        $prompt = sprintf(
-            'Create a professional news header image that represents these headlines from today: %s.
-            Style: Modern news media, clean design, abstract representation of news themes.
-            Do NOT include any text or words in the image.
-            Use a color palette suitable for a news website.',
-            implode('; ', $headlines_text)
-        );
+        // Usar prompt configurable
+        $default_prompt = 'Create a professional news header image that represents these headlines from today: {headlines}. Style: Modern news media, clean design, abstract representation of news themes. Do NOT include any text or words in the image. Use a color palette suitable for a news website.';
+        $prompt_template = get_option('aicg_news_image_prompt', $default_prompt);
+        $prompt = str_replace('{headlines}', implode('; ', $headlines_text), $prompt_template);
 
         // Obtener configuración de imagen
         $image_size = get_option('aicg_image_size', '1792x1024');
@@ -899,12 +1198,24 @@ EJEMPLO DE FORMATO:
             }
         }
 
+        // Determinar el autor
+        $post_author = get_current_user_id();
+        if (!empty($args['post_author']) && $args['post_author'] > 0) {
+            $post_author = intval($args['post_author']);
+        } else {
+            // Verificar si hay un autor por defecto configurado
+            $default_author = get_option('aicg_default_author', 0);
+            if ($default_author > 0) {
+                $post_author = intval($default_author);
+            }
+        }
+
         $post_data = array(
             'post_title' => $result['title'],
             'post_content' => $result['content'],
             'post_status' => $args['post_status'],
             'post_type' => $post_type,
-            'post_author' => get_current_user_id()
+            'post_author' => $post_author
         );
 
         // Si actualizamos un post existente
@@ -1015,41 +1326,58 @@ EJEMPLO DE FORMATO:
     }
 
     /**
+     * Convertir SVG a data URI base64 para uso en img tag
+     *
+     * @param string $svg SVG raw
+     * @return string Data URI base64
+     */
+    private function svg_to_data_uri($svg) {
+        return 'data:image/svg+xml;base64,' . base64_encode($svg);
+    }
+
+    /**
      * Generar SVG con número usando paths (no texto)
      *
      * @param int    $num Número a mostrar
      * @param string $bg_color Color de fondo
-     * @param string $num_color Color del número
      * @param string $style Estilo (circle o square)
-     * @return string SVG inline
+     * @param int    $size Tamaño en píxeles
+     * @return string img tag con SVG como data URI
      */
-    private function generate_number_svg($num, $bg_color, $style) {
+    private function generate_number_svg($num, $bg_color, $style, $size = 24) {
         $is_circle = ($style === 'circle');
         $rx = $is_circle ? '12' : '4';
 
         // Para números de un dígito
         if ($num < 10) {
             $path = $this->get_digit_path($num);
-            return sprintf(
-                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(7,5)"><path d="%s" fill="white"/></g></svg>',
+            $svg = sprintf(
+                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(7,5)"><path d="%s" fill="white"/></g></svg>',
                 esc_attr($bg_color),
                 $rx,
                 $path
             );
+        } else {
+            // Para números de dos dígitos
+            $d1 = floor($num / 10);
+            $d2 = $num % 10;
+            $path1 = $this->get_digit_path($d1);
+            $path2 = $this->get_digit_path($d2);
+
+            $svg = sprintf(
+                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(2,5) scale(0.9)"><path d="%s" fill="white"/></g><g transform="translate(12,5) scale(0.9)"><path d="%s" fill="white"/></g></svg>',
+                esc_attr($bg_color),
+                $rx,
+                $path1,
+                $path2
+            );
         }
 
-        // Para números de dos dígitos
-        $d1 = floor($num / 10);
-        $d2 = $num % 10;
-        $path1 = $this->get_digit_path($d1);
-        $path2 = $this->get_digit_path($d2);
-
         return sprintf(
-            '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(2,5) scale(0.9)"><path d="%s" fill="white"/></g><g transform="translate(12,5) scale(0.9)"><path d="%s" fill="white"/></g></svg>',
-            esc_attr($bg_color),
-            $rx,
-            $path1,
-            $path2
+            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle;">',
+            $this->svg_to_data_uri($svg),
+            $size,
+            $size
         );
     }
 
@@ -1058,33 +1386,43 @@ EJEMPLO DE FORMATO:
      *
      * @param int    $num Número a mostrar
      * @param string $color Color del texto y borde
-     * @return string SVG inline
+     * @param int    $size Tamaño en píxeles
+     * @return string img tag con SVG como data URI
      */
-    private function generate_badge_svg($num, $color) {
+    private function generate_badge_svg($num, $color, $size = 24) {
         $bg_color = $this->hex_to_rgba($color, 0.15);
 
         if ($num < 10) {
             $path = $this->get_digit_path($num);
-            return sprintf(
-                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><rect width="24" height="24" fill="%s" rx="12"/><g transform="translate(7,5)"><path d="%s" fill="%s"/></g></svg>',
+            $svg = sprintf(
+                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="12"/><g transform="translate(7,5)"><path d="%s" fill="%s"/></g></svg>',
                 $bg_color,
                 $path,
                 esc_attr($color)
             );
+            $width = $size;
+        } else {
+            $d1 = floor($num / 10);
+            $d2 = $num % 10;
+            $path1 = $this->get_digit_path($d1);
+            $path2 = $this->get_digit_path($d2);
+
+            $svg = sprintf(
+                '<svg width="32" height="24" viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="24" fill="%s" rx="12"/><g transform="translate(6,5) scale(0.9)"><path d="%s" fill="%s"/></g><g transform="translate(16,5) scale(0.9)"><path d="%s" fill="%s"/></g></svg>',
+                $bg_color,
+                $path1,
+                esc_attr($color),
+                $path2,
+                esc_attr($color)
+            );
+            $width = intval($size * 1.33); // Proporción para dos dígitos
         }
 
-        $d1 = floor($num / 10);
-        $d2 = $num % 10;
-        $path1 = $this->get_digit_path($d1);
-        $path2 = $this->get_digit_path($d2);
-
         return sprintf(
-            '<svg width="32" height="24" viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><rect width="32" height="24" fill="%s" rx="12"/><g transform="translate(6,5) scale(0.9)"><path d="%s" fill="%s"/></g><g transform="translate(16,5) scale(0.9)"><path d="%s" fill="%s"/></g></svg>',
-            $bg_color,
-            $path1,
-            esc_attr($color),
-            $path2,
-            esc_attr($color)
+            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle;">',
+            $this->svg_to_data_uri($svg),
+            $width,
+            $size
         );
     }
 
@@ -1093,29 +1431,40 @@ EJEMPLO DE FORMATO:
      *
      * @param int    $num Número a mostrar
      * @param string $color Color del texto
-     * @return string SVG inline
+     * @param int    $size Tamaño en píxeles (altura)
+     * @return string img tag con SVG como data URI
      */
-    private function generate_inline_svg($num, $color) {
+    private function generate_inline_svg($num, $color, $size = 14) {
+        $height = $size;
         if ($num < 10) {
             $path = $this->get_digit_path($num);
-            return sprintf(
-                '<svg width="10" height="14" viewBox="0 0 10 14" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><path d="%s" fill="%s"/></svg>',
+            $svg = sprintf(
+                '<svg width="10" height="14" viewBox="0 0 10 14" xmlns="http://www.w3.org/2000/svg"><path d="%s" fill="%s"/></svg>',
                 $path,
                 esc_attr($color)
             );
+            $width = intval($size * 0.71); // Proporción 10/14
+        } else {
+            $d1 = floor($num / 10);
+            $d2 = $num % 10;
+            $path1 = $this->get_digit_path($d1);
+            $path2 = $this->get_digit_path($d2);
+
+            $svg = sprintf(
+                '<svg width="18" height="14" viewBox="0 0 18 14" xmlns="http://www.w3.org/2000/svg"><g transform="scale(0.85)"><path d="%s" fill="%s"/></g><g transform="translate(9,0) scale(0.85)"><path d="%s" fill="%s"/></g></svg>',
+                $path1,
+                esc_attr($color),
+                $path2,
+                esc_attr($color)
+            );
+            $width = intval($size * 1.29); // Proporción 18/14
         }
 
-        $d1 = floor($num / 10);
-        $d2 = $num % 10;
-        $path1 = $this->get_digit_path($d1);
-        $path2 = $this->get_digit_path($d2);
-
         return sprintf(
-            '<svg width="18" height="14" viewBox="0 0 18 14" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false"><g transform="scale(0.85)"><path d="%s" fill="%s"/></g><g transform="translate(9,0) scale(0.85)"><path d="%s" fill="%s"/></g></svg>',
-            $path1,
-            esc_attr($color),
-            $path2,
-            esc_attr($color)
+            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:super;">',
+            $this->svg_to_data_uri($svg),
+            $width,
+            $height
         );
     }
 

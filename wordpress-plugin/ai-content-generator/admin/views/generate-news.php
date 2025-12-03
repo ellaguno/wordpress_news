@@ -124,6 +124,33 @@ $news_topics = get_option('aicg_news_topics', array());
                             </select>
                         </td>
                     </tr>
+
+                    <tr>
+                        <th scope="row">
+                            <label for="aicg_news_author"><?php esc_html_e('Autor', 'ai-content-generator'); ?></label>
+                        </th>
+                        <td>
+                            <?php
+                            $default_author = get_option('aicg_default_author', 0);
+                            $authors = get_users(array(
+                                'capability' => array('edit_posts'),
+                                'orderby' => 'display_name',
+                                'order' => 'ASC'
+                            ));
+                            ?>
+                            <select name="post_author" id="aicg_news_author">
+                                <option value="0" <?php selected($default_author, 0); ?>><?php esc_html_e('-- Usuario actual --', 'ai-content-generator'); ?></option>
+                                <?php foreach ($authors as $author) : ?>
+                                    <option value="<?php echo esc_attr($author->ID); ?>" <?php selected($default_author, $author->ID); ?>>
+                                        <?php echo esc_html($author->display_name); ?> (<?php echo esc_html($author->user_login); ?>)
+                                    </option>
+                                <?php endforeach; ?>
+                            </select>
+                            <p class="description">
+                                <?php esc_html_e('Selecciona el autor para este resumen de noticias.', 'ai-content-generator'); ?>
+                            </p>
+                        </td>
+                    </tr>
                 </table>
             </div>
 

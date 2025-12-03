@@ -333,6 +333,20 @@ class AICG_Gutenberg_Converter {
             $figure_classes[] = 'size-large';
         }
 
+        // Soporte para aspect-ratio y scale (WordPress 6.3+)
+        $img_style = '';
+        if (!empty($attrs['aspectRatio'])) {
+            $block_attrs['aspectRatio'] = $attrs['aspectRatio'];
+            $img_style .= 'aspect-ratio:' . $attrs['aspectRatio'] . ';';
+        }
+        if (!empty($attrs['scale'])) {
+            $block_attrs['scale'] = $attrs['scale'];
+            $img_style .= 'object-fit:' . $attrs['scale'] . ';';
+        }
+        if (!empty($img_style)) {
+            $img_attrs .= ' style="' . esc_attr($img_style) . '"';
+        }
+
         $attrs_json = !empty($block_attrs) ? ' ' . wp_json_encode($block_attrs) : '';
         $figure_class = implode(' ', $figure_classes);
 
@@ -383,12 +397,28 @@ class AICG_Gutenberg_Converter {
             if ($height) $attrs['height'] = $height;
 
             $class = $node->getAttribute('class');
-            if (strpos($class, 'aligncenter') !== false || strpos($class, 'center') !== false) {
+            if (strpos($class, 'alignwide') !== false) {
+                $attrs['align'] = 'wide';
+            } elseif (strpos($class, 'alignfull') !== false) {
+                $attrs['align'] = 'full';
+            } elseif (strpos($class, 'aligncenter') !== false || strpos($class, 'center') !== false) {
                 $attrs['align'] = 'center';
             } elseif (strpos($class, 'alignleft') !== false) {
                 $attrs['align'] = 'left';
             } elseif (strpos($class, 'alignright') !== false) {
                 $attrs['align'] = 'right';
+            }
+
+            // Si es una imagen generada, agregar aspectRatio y scale
+            if (strpos($class, 'aicg-generated-image') !== false) {
+                $attrs['aspectRatio'] = '16/9';
+                $attrs['scale'] = 'cover';
+            }
+
+            // Obtener ID de la imagen del data-attribute
+            $image_id = $node->getAttribute('data-image-id');
+            if ($image_id) {
+                $attrs['id'] = intval($image_id);
             }
 
             return self::image_block($url, $alt, $caption, $attrs);
@@ -412,7 +442,7 @@ class AICG_Gutenberg_Converter {
 
         error_log('[AICG Gutenberg] Procesando DIV con clase: ' . $class);
 
-        // Divs de referencias - mantener como HTML
+        // Divs de referencias - mantener como bloque HTML simple (más compatible con Gutenberg)
         if (strpos($class, 'aicg-references') !== false) {
             return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
         }

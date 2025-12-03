@@ -125,6 +125,11 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
     protected function make_request($endpoint, $body = array(), $method = 'POST') {
         $url = $this->api_base_url . $endpoint;
 
+        // Log del timeout que se está usando
+        if (strpos($endpoint, 'image') !== false || strpos($endpoint, 'chat') !== false) {
+            error_log('[AICG] make_request a ' . $endpoint . ' con timeout=' . $this->timeout . 's');
+        }
+
         $args = array(
             'method'  => $method,
             'timeout' => $this->timeout,

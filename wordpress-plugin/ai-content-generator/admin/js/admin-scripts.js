@@ -50,11 +50,25 @@
             $(document).on('input change', '#aicg_reference_color', this.syncColorToText);
             $(document).on('input change', '#aicg_reference_color_text', this.syncTextToColor);
 
+            // Reference size slider
+            $(document).on('input change', '#aicg_reference_size', this.updateReferenceSizeDisplay);
+
             // Update existing post toggle
             $(document).on('change', '#aicg_news_update_existing', this.toggleExistingPostSelector);
 
             // Reset system prompt
             $(document).on('click', '#aicg-reset-system-prompt', this.resetSystemPrompt);
+
+            // Reset image prompts
+            $(document).on('click', '#aicg-reset-article-image-prompt', this.resetArticleImagePrompt);
+            $(document).on('click', '#aicg-reset-news-image-prompt', this.resetNewsImagePrompt);
+
+            // News sources management
+            $(document).on('click', '#aicg-add-news-source', this.addNewsSource);
+            $(document).on('click', '.aicg-remove-source', this.removeNewsSource);
+
+            // Reset search template
+            $(document).on('click', '#aicg-reset-search-template', this.resetSearchTemplate);
 
             // Schedule frequency change - show/hide time hint
             $(document).on('change', '#aicg_schedule_news_frequency', this.toggleScheduleTimeHint);
@@ -333,6 +347,75 @@
         resetSystemPrompt: function() {
             const defaultPrompt = $(this).data('default');
             $('#aicg_news_system_prompt').val(defaultPrompt);
+        },
+
+        resetArticleImagePrompt: function() {
+            const defaultPrompt = $(this).data('default');
+            $('#aicg_article_image_prompt').val(defaultPrompt);
+        },
+
+        resetNewsImagePrompt: function() {
+            const defaultPrompt = $(this).data('default');
+            $('#aicg_news_image_prompt').val(defaultPrompt);
+        },
+
+        addNewsSource: function(e) {
+            e.preventDefault();
+            const container = $('#aicg-news-sources-container');
+            const index = container.find('.aicg-news-source-row').length;
+
+            const row = `
+                <div class="aicg-news-source-row" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                    <label style="display: flex; align-items: center;">
+                        <input type="checkbox"
+                               name="aicg_news_sources[${index}][activo]"
+                               value="1"
+                               checked>
+                    </label>
+                    <input type="text"
+                           name="aicg_news_sources[${index}][nombre]"
+                           value=""
+                           placeholder="Nombre de la fuente"
+                           class="regular-text"
+                           style="width: 200px;">
+                    <input type="url"
+                           name="aicg_news_sources[${index}][url]"
+                           value=""
+                           placeholder="URL del feed RSS"
+                           class="regular-text"
+                           style="flex: 1;">
+                    <button type="button" class="button aicg-remove-source">
+                        <span class="dashicons dashicons-trash"></span>
+                    </button>
+                </div>
+            `;
+
+            container.append(row);
+        },
+
+        removeNewsSource: function(e) {
+            e.preventDefault();
+            $(this).closest('.aicg-news-source-row').remove();
+            // Reindexar fuentes
+            SettingsPage.reindexSources();
+        },
+
+        reindexSources: function() {
+            $('#aicg-news-sources-container .aicg-news-source-row').each(function(index) {
+                $(this).find('input[name*="[activo]"]').attr('name', `aicg_news_sources[${index}][activo]`);
+                $(this).find('input[name*="[nombre]"]').attr('name', `aicg_news_sources[${index}][nombre]`);
+                $(this).find('input[name*="[url]"]').attr('name', `aicg_news_sources[${index}][url]`);
+            });
+        },
+
+        resetSearchTemplate: function() {
+            const defaultTemplate = $(this).data('default');
+            $('#aicg_news_search_template').val(defaultTemplate);
+        },
+
+        updateReferenceSizeDisplay: function() {
+            const value = $(this).val();
+            $('#aicg_reference_size_value').text(value + 'px');
         },
 
         toggleScheduleTimeHint: function() {

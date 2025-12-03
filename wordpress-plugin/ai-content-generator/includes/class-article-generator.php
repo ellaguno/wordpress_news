@@ -275,13 +275,10 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
             return $this->image_provider;
         }
 
-        // Generar imagen
-        $prompt = sprintf(
-            'Una imagen creativa, profesional y visualmente atractiva relacionada con "%s". ' .
-            'Estilo: ilustración digital moderna o fotografía artística. ' .
-            'Colores vibrantes pero profesionales. Sin texto ni logos.',
-            $topic
-        );
+        // Generar imagen con prompt configurable
+        $default_prompt = 'Una imagen creativa, profesional y visualmente atractiva relacionada con "{topic}". Estilo: ilustración digital moderna o fotografía artística. Colores vibrantes pero profesionales. Sin texto ni logos.';
+        $prompt_template = get_option('aicg_article_image_prompt', $default_prompt);
+        $prompt = str_replace('{topic}', $topic, $prompt_template);
 
         $image_result = $this->image_provider->generate_image($prompt, array(
             'size' => '1024x1024',
@@ -332,12 +329,31 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
      * @return int|WP_Error
      */
     private function create_post($result, $args) {
+        // Determinar el autor
+        $post_author = get_current_user_id();
+        if (!empty($args['post_author']) && $args['post_author'] > 0) {
+            $post_author = intval($args['post_author']);
+        } else {
+            // Verificar si hay un autor por defecto configurado
+            $default_author = get_option('aicg_default_author', 0);
+            if ($default_author > 0) {
+                $post_author = intval($default_author);
+            }
+        }
+
+        // Convertir contenido a formato Gutenberg si está configurado
+        $content = $result['content'];
+        $content_format = get_option('aicg_content_format', 'gutenberg');
+        if ($content_format === 'gutenberg' && class_exists('AICG_Gutenberg_Converter')) {
+            $content = AICG_Gutenberg_Converter::convert($content);
+        }
+
         $post_data = array(
             'post_title'   => $result['title'],
-            'post_content' => $result['content'],
+            'post_content' => $content,
             'post_status'  => $args['post_status'],
             'post_type'    => 'post',
-            'post_author'  => get_current_user_id()
+            'post_author'  => $post_author
         );
 
         // Categoría

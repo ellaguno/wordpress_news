@@ -343,6 +343,15 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
      * @return array|WP_Error
      */
     public function generate_image($prompt, $options = array()) {
+        // Aumentar timeout para generación de imágenes (pueden tardar hasta 3 minutos)
+        $original_timeout = $this->timeout;
+        $this->timeout = 300; // 5 minutos
+
+        // Intentar aumentar tiempo de ejecución de PHP si es posible
+        if (function_exists('set_time_limit')) {
+            @set_time_limit(300);
+        }
+
         $defaults = array(
             'model' => get_option('aicg_image_model', 'openai/gpt-5-image-mini'),
             'size' => '1024x1024',
@@ -352,48 +361,61 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
 
         $options = wp_parse_args($options, $defaults);
 
+        error_log('[AICG] generate_image iniciado con timeout de ' . $this->timeout . ' segundos');
+
         // Verificar si el modelo usa la API de chat con modalities
         $image_models = $this->get_image_models();
         $uses_chat_api = isset($image_models[$options['model']]['uses_chat_api'])
             ? $image_models[$options['model']]['uses_chat_api']
             : $this->detect_chat_api_model($options['model']);
 
-        if ($uses_chat_api) {
-            return $this->generate_image_via_chat($prompt, $options);
+        try {
+            if ($uses_chat_api) {
+                $result = $this->generate_image_via_chat($prompt, $options);
+                $this->timeout = $original_timeout;
+                return $result;
+            }
+
+            // Método tradicional para DALL-E y Stable Diffusion via /images/generations
+            $body = array(
+                'model' => $options['model'],
+                'prompt' => $prompt,
+                'n' => $options['n'],
+                'size' => $options['size']
+            );
+
+            if (strpos($options['model'], 'dall-e-3') !== false) {
+                $body['quality'] = $options['quality'];
+            }
+
+            $response = $this->make_request('/images/generations', $body);
+
+            if (is_wp_error($response)) {
+                $this->timeout = $original_timeout;
+                return $response;
+            }
+
+            if (!isset($response['data'][0]['url'])) {
+                error_log('[AICG] OpenRouter image response: ' . print_r($response, true));
+                $this->timeout = $original_timeout;
+                return new WP_Error('invalid_response', __('Respuesta inválida para generación de imagen', 'ai-content-generator'));
+            }
+
+            $cost = isset($image_models[$options['model']]['cost_' . $options['quality']])
+                ? $image_models[$options['model']]['cost_' . $options['quality']]
+                : 0.04;
+
+            $this->timeout = $original_timeout;
+            return array(
+                'url' => $response['data'][0]['url'],
+                'model' => $options['model'],
+                'cost' => $cost
+            );
+        } catch (Exception $e) {
+            $this->timeout = $original_timeout;
+            error_log('[AICG] Exception en generate_image: ' . $e->getMessage());
+            return new WP_Error('image_generation_error', $e->getMessage());
         }
-
-        // Método tradicional para DALL-E y Stable Diffusion via /images/generations
-        $body = array(
-            'model' => $options['model'],
-            'prompt' => $prompt,
-            'n' => $options['n'],
-            'size' => $options['size']
-        );
-
-        if (strpos($options['model'], 'dall-e-3') !== false) {
-            $body['quality'] = $options['quality'];
-        }
-
-        $response = $this->make_request('/images/generations', $body);
-
-        if (is_wp_error($response)) {
-            return $response;
-        }
-
-        if (!isset($response['data'][0]['url'])) {
-            error_log('[AICG] OpenRouter image response: ' . print_r($response, true));
-            return new WP_Error('invalid_response', __('Respuesta inválida para generación de imagen', 'ai-content-generator'));
-        }
-
-        $cost = isset($image_models[$options['model']]['cost_' . $options['quality']])
-            ? $image_models[$options['model']]['cost_' . $options['quality']]
-            : 0.04;
-
-        return array(
-            'url' => $response['data'][0]['url'],
-            'model' => $options['model'],
-            'cost' => $cost
-        );
     }
 
     /**
@@ -530,8 +552,13 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         }
 
         error_log('[AICG] OpenRouter chat image request: ' . print_r($body, true));
+        error_log('[AICG] Iniciando make_request para imagen... (esto puede tardar varios minutos)');
+        $start_time = microtime(true);
 
         $response = $this->make_request('/chat/completions', $body);
+
+        $elapsed = round(microtime(true) - $start_time, 2);
+        error_log('[AICG] make_request completado en ' . $elapsed . ' segundos');
 
         if (is_wp_error($response)) {
             error_log('[AICG] OpenRouter chat image error: ' . $response->get_error_message());

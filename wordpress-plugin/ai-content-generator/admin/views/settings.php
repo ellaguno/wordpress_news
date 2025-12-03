@@ -343,6 +343,104 @@ if (!defined('ABSPATH')) {
 
                         <tr>
                             <th scope="row">
+                                <label><?php esc_html_e('Fuentes RSS Principales', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <p class="description" style="margin-bottom: 10px;">
+                                    <?php esc_html_e('Fuentes RSS para obtener los titulares principales del "Resumen del Día". Puedes usar Google News u otras fuentes RSS.', 'ai-content-generator'); ?>
+                                </p>
+                                <div id="aicg-news-sources-container">
+                                    <?php
+                                    $default_sources = array(
+                                        array(
+                                            'nombre' => 'Google News - Mundo',
+                                            'url' => 'https://news.google.com/news/rss/headlines/section/topic/WORLD?hl=es-419&gl=MX&ceid=MX:es-419',
+                                            'activo' => true
+                                        ),
+                                        array(
+                                            'nombre' => 'Google News - Nacional',
+                                            'url' => 'https://news.google.com/news/rss/headlines/section/topic/NATION?hl=es-419&gl=MX&ceid=MX:es-419',
+                                            'activo' => true
+                                        ),
+                                        array(
+                                            'nombre' => 'Google News - Última Hora',
+                                            'url' => 'https://news.google.com/news/rss/headlines/section/topic/BREAKING?hl=es-419&gl=MX&ceid=MX:es-419',
+                                            'activo' => true
+                                        )
+                                    );
+                                    $news_sources = get_option('aicg_news_sources', $default_sources);
+                                    if (empty($news_sources)) {
+                                        $news_sources = $default_sources;
+                                    }
+                                    foreach ($news_sources as $index => $source) :
+                                    ?>
+                                        <div class="aicg-news-source-row" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                            <label style="display: flex; align-items: center;">
+                                                <input type="checkbox"
+                                                       name="aicg_news_sources[<?php echo $index; ?>][activo]"
+                                                       value="1"
+                                                       <?php checked(isset($source['activo']) ? $source['activo'] : true); ?>>
+                                            </label>
+                                            <input type="text"
+                                                   name="aicg_news_sources[<?php echo $index; ?>][nombre]"
+                                                   value="<?php echo esc_attr($source['nombre']); ?>"
+                                                   placeholder="<?php esc_attr_e('Nombre de la fuente', 'ai-content-generator'); ?>"
+                                                   class="regular-text"
+                                                   style="width: 200px;">
+                                            <input type="url"
+                                                   name="aicg_news_sources[<?php echo $index; ?>][url]"
+                                                   value="<?php echo esc_attr($source['url']); ?>"
+                                                   placeholder="<?php esc_attr_e('URL del feed RSS', 'ai-content-generator'); ?>"
+                                                   class="regular-text"
+                                                   style="flex: 1;">
+                                            <button type="button" class="button aicg-remove-source">
+                                                <span class="dashicons dashicons-trash"></span>
+                                            </button>
+                                        </div>
+                                    <?php endforeach; ?>
+                                </div>
+                                <button type="button" class="button" id="aicg-add-news-source">
+                                    <span class="dashicons dashicons-plus"></span>
+                                    <?php esc_html_e('Añadir Fuente', 'ai-content-generator'); ?>
+                                </button>
+                                <p class="description" style="margin-top: 10px;">
+                                    <strong><?php esc_html_e('Ejemplos de URLs de Google News:', 'ai-content-generator'); ?></strong><br>
+                                    <?php esc_html_e('Tecnología:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/TECHNOLOGY?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
+                                    <?php esc_html_e('Negocios:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/BUSINESS?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
+                                    <?php esc_html_e('Deportes:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/SPORTS?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
+                                    <?php esc_html_e('Entretenimiento:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/ENTERTAINMENT?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
+                                    <?php esc_html_e('Ciencia:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/SCIENCE?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
+                                    <?php esc_html_e('Salud:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/HEALTH?hl=es-419&gl=MX&ceid=MX:es-419</code>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_search_template"><?php esc_html_e('Plantilla de Búsqueda', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $default_template = 'https://news.google.com/rss/search?q={topic}&hl=es-419&gl=MX&ceid=MX:es-419';
+                                $search_template = get_option('aicg_news_search_template', $default_template);
+                                ?>
+                                <input type="url"
+                                       name="aicg_news_search_template"
+                                       id="aicg_news_search_template"
+                                       value="<?php echo esc_attr($search_template); ?>"
+                                       class="large-text"
+                                       placeholder="<?php echo esc_attr($default_template); ?>">
+                                <p class="description">
+                                    <?php esc_html_e('URL para buscar noticias por tema. Usa {topic} como marcador para el nombre del tema.', 'ai-content-generator'); ?>
+                                </p>
+                                <button type="button" class="button button-small" id="aicg-reset-search-template" data-default="<?php echo esc_attr($default_template); ?>">
+                                    <?php esc_html_e('Restaurar por defecto', 'ai-content-generator'); ?>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
                                 <label for="aicg_news_post_type"><?php esc_html_e('Tipo de Publicación', 'ai-content-generator'); ?></label>
                             </th>
                             <td>
@@ -484,6 +582,27 @@ if (!defined('ABSPATH')) {
                                        style="margin-left: 10px;">
                                 <p class="description">
                                     <?php esc_html_e('Color principal para los números de referencia.', 'ai-content-generator'); ?>
+                                </p>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_reference_size"><?php esc_html_e('Tamaño de Referencias', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php $ref_size = get_option('aicg_reference_size', 24); ?>
+                                <input type="range"
+                                       name="aicg_reference_size"
+                                       id="aicg_reference_size"
+                                       min="12"
+                                       max="32"
+                                       step="2"
+                                       value="<?php echo esc_attr($ref_size); ?>"
+                                       style="width: 150px; vertical-align: middle;">
+                                <span id="aicg_reference_size_value" style="margin-left: 10px; font-weight: bold;"><?php echo esc_html($ref_size); ?>px</span>
+                                <p class="description">
+                                    <?php esc_html_e('Tamaño de los números de referencia (12px - 32px). Por defecto: 24px.', 'ai-content-generator'); ?>
                                 </p>
                             </td>
                         </tr>
@@ -697,6 +816,52 @@ if (!defined('ABSPATH')) {
                                 </p>
                             </td>
                         </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_article_image_prompt"><?php esc_html_e('Prompt para Artículos', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $default_article_prompt = 'Una imagen creativa, profesional y visualmente atractiva relacionada con "{topic}". Estilo: ilustración digital moderna o fotografía artística. Colores vibrantes pero profesionales. Sin texto ni logos.';
+                                $article_image_prompt = get_option('aicg_article_image_prompt', $default_article_prompt);
+                                ?>
+                                <textarea name="aicg_article_image_prompt"
+                                          id="aicg_article_image_prompt"
+                                          rows="4"
+                                          cols="60"
+                                          class="large-text"><?php echo esc_textarea($article_image_prompt); ?></textarea>
+                                <p class="description">
+                                    <?php esc_html_e('Prompt para generar imágenes de artículos. Usa {topic} como marcador para el tema del artículo.', 'ai-content-generator'); ?>
+                                </p>
+                                <button type="button" class="button button-small" id="aicg-reset-article-image-prompt" data-default="<?php echo esc_attr($default_article_prompt); ?>">
+                                    <?php esc_html_e('Restaurar por defecto', 'ai-content-generator'); ?>
+                                </button>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_image_prompt"><?php esc_html_e('Prompt para Noticias', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $default_news_prompt = 'Create a professional news header image that represents these headlines from today: {headlines}. Style: Modern news media, clean design, abstract representation of news themes. Do NOT include any text or words in the image. Use a color palette suitable for a news website.';
+                                $news_image_prompt = get_option('aicg_news_image_prompt', $default_news_prompt);
+                                ?>
+                                <textarea name="aicg_news_image_prompt"
+                                          id="aicg_news_image_prompt"
+                                          rows="4"
+                                          cols="60"
+                                          class="large-text"><?php echo esc_textarea($news_image_prompt); ?></textarea>
+                                <p class="description">
+                                    <?php esc_html_e('Prompt para generar imágenes de noticias. Usa {headlines} como marcador para los titulares del día.', 'ai-content-generator'); ?>
+                                </p>
+                                <button type="button" class="button button-small" id="aicg-reset-news-image-prompt" data-default="<?php echo esc_attr($default_news_prompt); ?>">
+                                    <?php esc_html_e('Restaurar por defecto', 'ai-content-generator'); ?>
+                                </button>
+                            </td>
+                        </tr>
                     </table>
                 </div>
 
@@ -835,6 +1000,33 @@ if (!defined('ABSPATH')) {
                                     <?php esc_html_e('Advertencia: El contenido se publicará sin revisión previa.', 'ai-content-generator'); ?>
                                 </p>
                                 <?php endif; ?>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_default_author"><?php esc_html_e('Autor por Defecto', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <?php
+                                $default_author = get_option('aicg_default_author', 0);
+                                $authors = get_users(array(
+                                    'capability' => array('edit_posts'),
+                                    'orderby' => 'display_name',
+                                    'order' => 'ASC'
+                                ));
+                                ?>
+                                <select name="aicg_default_author" id="aicg_default_author">
+                                    <option value="0" <?php selected($default_author, 0); ?>><?php esc_html_e('-- Usuario actual --', 'ai-content-generator'); ?></option>
+                                    <?php foreach ($authors as $author) : ?>
+                                        <option value="<?php echo esc_attr($author->ID); ?>" <?php selected($default_author, $author->ID); ?>>
+                                            <?php echo esc_html($author->display_name); ?> (<?php echo esc_html($author->user_login); ?>)
+                                        </option>
+                                    <?php endforeach; ?>
+                                </select>
+                                <p class="description">
+                                    <?php esc_html_e('El autor que se asignará a los artículos y noticias generados. Si se selecciona "Usuario actual", se usará el usuario que ejecute la generación.', 'ai-content-generator'); ?>
+                                </p>
                             </td>
                         </tr>
                     </table>

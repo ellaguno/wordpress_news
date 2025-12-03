@@ -240,6 +240,20 @@ class AICG_Admin_Settings {
             'aicg_news_section'
         );
 
+        // Fuentes RSS principales
+        register_setting('aicg-settings', 'aicg_news_sources', array(
+            'type' => 'array',
+            'sanitize_callback' => array($this, 'sanitize_news_sources'),
+            'default' => array()
+        ));
+
+        // Plantilla de búsqueda para temas
+        register_setting('aicg-settings', 'aicg_news_search_template', array(
+            'type' => 'string',
+            'sanitize_callback' => 'esc_url_raw',
+            'default' => 'https://news.google.com/rss/search?q={topic}&hl=es-419&gl=MX&ceid=MX:es-419'
+        ));
+
         // Tipo de publicación para noticias
         register_setting('aicg-settings', 'aicg_news_post_type', array(
             'type' => 'string',
@@ -285,6 +299,12 @@ class AICG_Admin_Settings {
             'type' => 'string',
             'sanitize_callback' => 'sanitize_text_field',
             'default' => 'horizontal'
+        ));
+
+        register_setting('aicg-settings', 'aicg_reference_size', array(
+            'type' => 'integer',
+            'sanitize_callback' => array($this, 'sanitize_reference_size'),
+            'default' => 24
         ));
 
         // Actualizar post existente
@@ -355,6 +375,18 @@ class AICG_Admin_Settings {
             'default' => 0
         ));
 
+        register_setting('aicg-settings', 'aicg_article_image_prompt', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'default' => 'Una imagen creativa, profesional y visualmente atractiva relacionada con "{topic}". Estilo: ilustración digital moderna o fotografía artística. Colores vibrantes pero profesionales. Sin texto ni logos.'
+        ));
+
+        register_setting('aicg-settings', 'aicg_news_image_prompt', array(
+            'type' => 'string',
+            'sanitize_callback' => 'sanitize_textarea_field',
+            'default' => 'Create a professional news header image that represents these headlines from today: {headlines}. Style: Modern news media, clean design, abstract representation of news themes. Do NOT include any text or words in the image. Use a color palette suitable for a news website.'
+        ));
+
         // Sección: Programación
         add_settings_section(
             'aicg_schedule_section',
@@ -405,6 +437,12 @@ class AICG_Admin_Settings {
             'type' => 'string',
             'sanitize_callback' => array($this, 'sanitize_post_status_field'),
             'default' => 'draft'
+        ));
+
+        register_setting('aicg-settings', 'aicg_default_author', array(
+            'type' => 'integer',
+            'sanitize_callback' => 'absint',
+            'default' => 0
         ));
 
         add_settings_field(
@@ -772,6 +810,38 @@ class AICG_Admin_Settings {
                 $sanitized[] = array(
                     'nombre' => sanitize_text_field($topic['nombre']),
                     'imagen' => esc_url_raw($topic['imagen'] ?? '')
+                );
+            }
+        }
+
+        return $sanitized;
+    }
+
+    /**
+     * Sanitizar tamaño de referencias
+     */
+    public function sanitize_reference_size($value) {
+        $value = intval($value);
+        if ($value < 12) return 12;
+        if ($value > 32) return 32;
+        return $value;
+    }
+
+    /**
+     * Sanitizar fuentes de noticias RSS
+     */
+    public function sanitize_news_sources($input) {
+        if (!is_array($input)) {
+            return array();
+        }
+
+        $sanitized = array();
+        foreach ($input as $source) {
+            if (!empty($source['url'])) {
+                $sanitized[] = array(
+                    'nombre' => sanitize_text_field($source['nombre'] ?? ''),
+                    'url' => esc_url_raw($source['url']),
+                    'activo' => isset($source['activo']) ? (bool) $source['activo'] : false
                 );
             }
         }

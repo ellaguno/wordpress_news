@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Generator
  * Plugin URI: https://github.com/sesolibre/ai-content-generator
  * Description: Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter)
- * Version: 2.3.1
+ * Version: 2.5.2
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Eduardo Llaguno
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constantes del plugin
-define('AICG_VERSION', '2.3.1');
+define('AICG_VERSION', '2.5.2');
 define('AICG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AICG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AICG_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -58,6 +58,38 @@ final class AI_Content_Generator {
         $this->set_locale();
         $this->define_admin_hooks();
         $this->define_cron_hooks();
+        $this->allow_data_uris();
+    }
+
+    /**
+     * Permitir data URIs en el contenido (para SVGs base64)
+     */
+    private function allow_data_uris() {
+        // Permitir data: protocol en wp_kses para imágenes SVG base64
+        add_filter('wp_kses_allowed_html', function($allowed, $context) {
+            if ($context === 'post') {
+                // Asegurar que img está permitido con src
+                if (!isset($allowed['img'])) {
+                    $allowed['img'] = array();
+                }
+                $allowed['img']['src'] = true;
+                $allowed['img']['width'] = true;
+                $allowed['img']['height'] = true;
+                $allowed['img']['alt'] = true;
+                $allowed['img']['style'] = true;
+                $allowed['img']['class'] = true;
+                $allowed['img']['aria-hidden'] = true;
+            }
+            return $allowed;
+        }, 10, 2);
+
+        // Permitir data: URIs en el protocolo
+        add_filter('kses_allowed_protocols', function($protocols) {
+            if (!in_array('data', $protocols)) {
+                $protocols[] = 'data';
+            }
+            return $protocols;
+        });
     }
 
     /**
