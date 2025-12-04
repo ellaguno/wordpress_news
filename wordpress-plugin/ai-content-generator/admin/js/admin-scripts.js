@@ -72,6 +72,9 @@
 
             // Schedule frequency change - show/hide time hint
             $(document).on('change', '#aicg_schedule_news_frequency', this.toggleScheduleTimeHint);
+
+            // Toggle image sources visibility
+            $(document).on('change', '#aicg_news_generate_image', this.toggleImageSources);
         },
 
         initTabs: function() {
@@ -341,6 +344,15 @@
                 $('#aicg-existing-post-selector').slideDown();
             } else {
                 $('#aicg-existing-post-selector').slideUp();
+            }
+        },
+
+        toggleImageSources: function() {
+            const checked = $(this).is(':checked');
+            if (checked) {
+                $('#aicg-image-sources-row').slideDown();
+            } else {
+                $('#aicg-image-sources-row').slideUp();
             }
         },
 
@@ -660,12 +672,77 @@
             $('#aicg-view-news-post').attr('href', data.view_url);
             $('#aicg-edit-news-post').attr('href', data.edit_url);
 
-            // Show stats
-            const statsHtml = `
-                <p><strong>Noticias procesadas:</strong> ${data.news_count}</p>
-                <p><strong>Temas:</strong> ${data.topics_processed.join(', ')}</p>
-                <p><strong>Tokens:</strong> ${data.tokens_used} | <strong>Costo:</strong> $${data.cost}</p>
+            // Build detailed stats HTML
+            let statsHtml = `
+                <div style="margin-bottom: 15px;">
+                    <p><strong>Total noticias procesadas:</strong> ${data.news_count}</p>
+                    <p><strong>Tokens:</strong> ${data.tokens_used} | <strong>Costo:</strong> $${data.cost}</p>
+                </div>
             `;
+
+            // Show details per section if available
+            if (data.topics_details && data.topics_details.length > 0) {
+                statsHtml += `<div style="border-top: 1px solid #ddd; padding-top: 15px;">
+                    <strong>Detalle por sección:</strong>
+                    <table style="width: 100%; margin-top: 10px; border-collapse: collapse;">
+                        <thead>
+                            <tr style="background: #f5f5f5;">
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Sección</th>
+                                <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">Fuentes</th>
+                                <th style="padding: 8px; text-align: center; border-bottom: 1px solid #ddd;">Imágenes</th>
+                                <th style="padding: 8px; text-align: left; border-bottom: 1px solid #ddd;">Estado</th>
+                            </tr>
+                        </thead>
+                        <tbody>`;
+
+                data.topics_details.forEach(function(topic) {
+                    let statusIcon = '';
+                    let statusText = '';
+                    let rowStyle = '';
+
+                    if (topic.status === 'success') {
+                        statusIcon = '✓';
+                        statusText = 'Procesado';
+                        rowStyle = 'color: #155724;';
+                    } else if (topic.status === 'no_news') {
+                        statusIcon = '⚠';
+                        statusText = 'Sin noticias';
+                        rowStyle = 'color: #856404; background: #fff3cd;';
+                    } else if (topic.status === 'error') {
+                        statusIcon = '✗';
+                        statusText = 'Error';
+                        rowStyle = 'color: #721c24; background: #f8d7da;';
+                    } else {
+                        statusIcon = '○';
+                        statusText = topic.message || 'Pendiente';
+                        rowStyle = 'color: #666;';
+                    }
+
+                    let imagesInfo = '-';
+                    if (topic.images_count > 0) {
+                        let sourceLabel = '';
+                        if (topic.images_source === 'og') {
+                            sourceLabel = ' (de fuentes)';
+                        } else if (topic.images_source === 'static') {
+                            sourceLabel = ' (estática)';
+                        } else if (topic.images_source === 'generated') {
+                            sourceLabel = ' (generada)';
+                        }
+                        imagesInfo = topic.images_count + sourceLabel;
+                    }
+
+                    statsHtml += `
+                        <tr style="${rowStyle}">
+                            <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${topic.name}</strong></td>
+                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${topic.news_count || 0}</td>
+                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${imagesInfo}</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #eee;">${statusIcon} ${statusText}</td>
+                        </tr>`;
+                });
+
+                statsHtml += `</tbody></table></div>`;
+            }
+
             $('#aicg-news-stats').html(statsHtml);
         },
 

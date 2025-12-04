@@ -111,6 +111,7 @@ class AICG_News_Aggregator {
             'cost' => 0,
             'news_count' => 0,
             'topics_processed' => array(),
+            'topics_details' => array(), // Detalles por sección
             'image_id' => 0
         );
 
@@ -162,8 +163,22 @@ class AICG_News_Aggregator {
             // URLs usadas en esta sesión (para evitar repetición entre temas)
             $session_used_urls = array();
 
+            // Recopilar noticias procesadas para extracción de imágenes OG
+            $all_processed_news = array();
+
             foreach ($args['topics'] as $topic) {
                 error_log('[AICG] Procesando tema: ' . $topic);
+
+                // Inicializar detalles del tema
+                $topic_detail = array(
+                    'name' => $topic,
+                    'news_count' => 0,
+                    'images_count' => 0,
+                    'images_source' => '', // 'og' para imágenes de fuentes, 'generated' para generadas, '' para ninguna
+                    'status' => 'pending',
+                    'message' => ''
+                );
+
                 $news = $this->fetch_news_for_topic($topic);
                 $original_count = count($news);
                 error_log('[AICG] Noticias obtenidas para "' . $topic . '": ' . $original_count);
@@ -187,6 +202,9 @@ class AICG_News_Aggregator {
 
                 if (empty($news)) {
                     error_log('[AICG] Sin noticias para "' . $topic . '" después de filtros');
+                    $topic_detail['status'] = 'no_news';
+                    $topic_detail['message'] = __('Sin noticias disponibles para este tema', 'ai-content-generator');
+                    $result['topics_details'][] = $topic_detail;
                     continue;
                 }
 
@@ -195,11 +213,17 @@ class AICG_News_Aggregator {
 
                 if (is_wp_error($topic_summary)) {
                     error_log('[AICG] Error generando resumen para tema "' . $topic . '": ' . $topic_summary->get_error_message());
+                    $topic_detail['status'] = 'error';
+                    $topic_detail['message'] = $topic_summary->get_error_message();
+                    $result['topics_details'][] = $topic_detail;
                     continue;
                 }
 
                 if (empty($topic_summary['content'])) {
                     error_log('[AICG] Resumen vacío para tema "' . $topic . '"');
+                    $topic_detail['status'] = 'empty';
+                    $topic_detail['message'] = __('No se pudo generar resumen', 'ai-content-generator');
+                    $result['topics_details'][] = $topic_detail;
                     continue;
                 }
 
@@ -208,21 +232,43 @@ class AICG_News_Aggregator {
                 $result['news_count'] += count($news);
                 $result['topics_processed'][] = $topic;
 
+                // Actualizar detalles del tema
+                $topic_detail['news_count'] = count($news);
+                $topic_detail['status'] = 'success';
+
                 // Marcar URLs como usadas (en DB y en sesión actual)
                 $news_urls = array_column($news, 'link');
                 $this->mark_urls_as_used($news_urls);
                 $session_used_urls = array_merge($session_used_urls, $news_urls);
 
+                // Agregar noticias a la lista para extracción de imágenes OG
+                $all_processed_news = array_merge($all_processed_news, $news);
+
                 // Construir HTML de la sección
                 $content_parts[] = '<div class="aicg-topic-section">';
                 $content_parts[] = '<h2>' . esc_html($topic) . '</h2>';
 
-                // Imagen del tema
-                if (!empty($topics_images[$topic])) {
+                // Contenido del resumen primero
+                $content_parts[] = $topic_summary['content'];
+
+                // Galería de imágenes del tema DESPUÉS del texto (si está habilitado)
+                $carousel_enabled = get_option('aicg_news_carousel_enabled', true);
+                if ($carousel_enabled) {
+                    $carousel_data = $this->extract_topic_images($news, $topic);
+                    if (!empty($carousel_data['html'])) {
+                        $content_parts[] = $carousel_data['html'];
+                        $topic_detail['images_count'] = count($carousel_data['images']);
+                        $topic_detail['images_source'] = 'og';
+                    }
+                } elseif (!empty($topics_images[$topic])) {
+                    // Fallback: Imagen estática del tema (configuración antigua)
                     $content_parts[] = '<img src="' . esc_url($topics_images[$topic]) . '" alt="' . esc_attr($topic) . '" class="aicg-topic-image" />';
+                    $topic_detail['images_count'] = 1;
+                    $topic_detail['images_source'] = 'static';
                 }
 
-                $content_parts[] = $topic_summary['content'];
+                // Guardar detalles del tema
+                $result['topics_details'][] = $topic_detail;
 
                 // Referencias con estilos configurables
                 $ref_style = get_option('aicg_reference_style', 'inline');
@@ -313,6 +359,14 @@ class AICG_News_Aggregator {
             // Generar título
             $date_formatted = wp_date('l, j \d\e F \d\e Y');
             $result['title'] = sprintf(__('Resumen de noticias - %s', 'ai-content-generator'), $date_formatted);
+
+            // Agregar CSS y JS del carrusel si hay carruseles en el contenido
+            $carousel_enabled = get_option('aicg_news_carousel_enabled', true);
+            if ($carousel_enabled) {
+                array_unshift($content_parts, self::get_carousel_css());
+                $content_parts[] = self::get_carousel_js();
+            }
+
             $result['content'] = implode("\n", $content_parts);
 
             // Verificar que hay contenido real (más que solo el wrapper vacío)
@@ -347,12 +401,14 @@ class AICG_News_Aggregator {
                 }
 
                 if (!empty($headlines_for_image)) {
-                    error_log('[AICG] Generando imagen con ' . count($headlines_for_image) . ' titulares');
+                    error_log('[AICG] Generando imagen híbrida con ' . count($headlines_for_image) . ' titulares');
 
                     // Try-catch específico para generación de imagen
                     try {
-                        $image_result = $this->generate_featured_image($headlines_for_image);
-                        error_log('[AICG] generate_featured_image retornó: ' . (is_wp_error($image_result) ? 'WP_Error' : 'array'));
+                        // Pasar también las noticias con URLs para el esquema híbrido
+                        $image_result = $this->generate_featured_image($headlines_for_image, $all_processed_news);
+                        error_log('[AICG] generate_featured_image retornó: ' . (is_wp_error($image_result) ? 'WP_Error' : 'array') .
+                                  (isset($image_result['source']) ? ' (fuente: ' . $image_result['source'] . ')' : ''));
 
                         if (!is_wp_error($image_result) && !empty($image_result['attachment_id'])) {
                             $generated_image_url = wp_get_attachment_url($image_result['attachment_id']);
@@ -954,12 +1010,941 @@ EJEMPLO DE FORMATO:
     }
 
     /**
-     * Generar imagen destacada basada en los titulares
+     * Generar imagen destacada usando esquema híbrido:
+     * 1. Intentar extraer imagen OG/Twitter de las fuentes (si está habilitado)
+     * 2. Si falla, buscar imagen de mapa de la región mencionada (si está habilitado)
+     * 3. Si falla, generar con IA (si está habilitado)
+     *
+     * @param array $headlines
+     * @param array $news_items Noticias con URLs de fuentes (opcional)
+     * @return array|WP_Error
+     */
+    private function generate_featured_image($headlines, $news_items = array()) {
+        error_log('[AICG] Iniciando generación híbrida de imagen');
+
+        // Obtener configuración de fuentes de imagen
+        $use_og = get_option('aicg_image_source_og', true);
+        $use_map = get_option('aicg_image_source_map', true);
+        $use_ai = get_option('aicg_image_source_ai', true);
+
+        error_log('[AICG] Fuentes habilitadas - OG: ' . ($use_og ? 'sí' : 'no') . ', Mapa: ' . ($use_map ? 'sí' : 'no') . ', IA: ' . ($use_ai ? 'sí' : 'no'));
+
+        // PASO 1: Intentar extraer imagen OG/Twitter de las fuentes
+        if ($use_og && !empty($news_items)) {
+            $og_image = $this->extract_og_image_from_sources($news_items);
+            if (!is_wp_error($og_image) && !empty($og_image['attachment_id'])) {
+                error_log('[AICG] Imagen OG extraída exitosamente');
+                return array(
+                    'attachment_id' => $og_image['attachment_id'],
+                    'cost' => 0,
+                    'source' => 'og_image'
+                );
+            }
+            error_log('[AICG] No se pudo extraer imagen OG: ' . (is_wp_error($og_image) ? $og_image->get_error_message() : 'no disponible'));
+        }
+
+        // PASO 2: Buscar imagen de mapa SOLO si la región es prominente (aparece en múltiples titulares)
+        // Para la imagen destacada general, preferimos IA sobre un mapa aleatorio
+        if ($use_map) {
+            $region = $this->extract_prominent_region_from_headlines($headlines);
+            if ($region) {
+                error_log('[AICG] Región prominente detectada: ' . $region);
+                $map_image = $this->fetch_map_image($region);
+                if (!is_wp_error($map_image) && !empty($map_image['attachment_id'])) {
+                    error_log('[AICG] Imagen de mapa obtenida para: ' . $region);
+                    return array(
+                        'attachment_id' => $map_image['attachment_id'],
+                        'cost' => 0,
+                        'source' => 'map_image'
+                    );
+                }
+                error_log('[AICG] No se pudo obtener mapa: ' . (is_wp_error($map_image) ? $map_image->get_error_message() : 'no disponible'));
+            }
+        }
+
+        // PASO 3: Generar con IA como último recurso
+        if ($use_ai) {
+            error_log('[AICG] Generando imagen con IA');
+            return $this->generate_ai_image($headlines);
+        }
+
+        // Si ninguna fuente está habilitada o todas fallaron
+        error_log('[AICG] No hay fuentes de imagen habilitadas o todas fallaron');
+        return new WP_Error('no_image_source', __('No se pudo obtener imagen de ninguna fuente', 'ai-content-generator'));
+    }
+
+    /**
+     * Extraer imagen OG/Twitter de las URLs de las noticias
+     *
+     * @param array $news_items Array de noticias con 'link'
+     * @return array|WP_Error
+     */
+    private function extract_og_image_from_sources($news_items) {
+        foreach (array_slice($news_items, 0, 5) as $item) {
+            if (empty($item['link'])) {
+                continue;
+            }
+
+            $image_url = $this->get_og_image_from_url($item['link']);
+            if ($image_url) {
+                // Descargar y guardar la imagen
+                $attachment_id = $this->save_image_to_media_library($image_url);
+                if (!is_wp_error($attachment_id)) {
+                    return array('attachment_id' => $attachment_id);
+                }
+            }
+        }
+
+        return new WP_Error('no_og_image', __('No se encontró imagen OG en las fuentes', 'ai-content-generator'));
+    }
+
+    /**
+     * Obtener imagen OG/Twitter de una URL
+     *
+     * @param string $url URL del artículo
+     * @return string|false URL de la imagen o false
+     */
+    private function get_og_image_from_url($url) {
+        // Resolver URL real (especialmente para Google News)
+        $real_url = $this->resolve_google_news_url($url);
+        if (!$real_url) {
+            error_log('[AICG] No se pudo resolver URL: ' . $url);
+            return false;
+        }
+
+        error_log('[AICG] URL resuelta: ' . $real_url);
+
+        // Obtener HTML de la página real
+        $response = wp_remote_get($real_url, array(
+            'timeout' => 15,
+            'redirection' => 5,
+            'headers' => array(
+                'User-Agent' => $this->user_agent,
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'es-ES,es;q=0.9,en;q=0.8'
+            )
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('[AICG] Error obteniendo página: ' . $response->get_error_message());
+            return false;
+        }
+
+        $html = wp_remote_retrieve_body($response);
+        if (empty($html)) {
+            return false;
+        }
+
+        // Buscar og:image (varios formatos posibles)
+        $patterns = array(
+            '/<meta[^>]+property=["\']og:image["\'][^>]+content=["\']([^"\']+)["\']/',
+            '/<meta[^>]+content=["\']([^"\']+)["\'][^>]+property=["\']og:image["\']/',
+            '/<meta[^>]+name=["\']twitter:image["\'][^>]+content=["\']([^"\']+)["\']/',
+            '/<meta[^>]+content=["\']([^"\']+)["\'][^>]+name=["\']twitter:image["\']/',
+            '/<meta[^>]+property=["\']og:image:url["\'][^>]+content=["\']([^"\']+)["\']/',
+            '/<meta[^>]+itemprop=["\']image["\'][^>]+content=["\']([^"\']+)["\']/',
+        );
+
+        foreach ($patterns as $pattern) {
+            if (preg_match($pattern, $html, $matches)) {
+                $image_url = $this->validate_image_url($matches[1]);
+                if ($image_url) {
+                    error_log('[AICG] Imagen OG encontrada: ' . $image_url);
+                    return $image_url;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolver URL de Google News a la URL real del artículo
+     *
+     * @param string $url URL de Google News
+     * @return string|false URL real o false
+     */
+    private function resolve_google_news_url($url) {
+        // Si no es URL de Google News, devolverla tal cual
+        if (strpos($url, 'news.google.com') === false) {
+            return $url;
+        }
+
+        error_log('[AICG] Resolviendo URL de Google News: ' . substr($url, 0, 100) . '...');
+
+        // MÉTODO 1: Usar la API batchexecute de Google (método más confiable para URLs modernas)
+        $batch_url = $this->resolve_with_batchexecute($url);
+        if ($batch_url) {
+            error_log('[AICG] URL desde batchexecute: ' . $batch_url);
+            return $batch_url;
+        }
+
+        // MÉTODO 2: Intentar decodificar desde el path de la URL (URLs antiguas)
+        $decoded_url = $this->decode_google_news_url($url);
+        if ($decoded_url) {
+            error_log('[AICG] URL decodificada de base64: ' . $decoded_url);
+            return $decoded_url;
+        }
+
+        // MÉTODO 3: Usar cURL para seguir redirects
+        if (function_exists('curl_init')) {
+            $curl_url = $this->resolve_with_curl($url);
+            if ($curl_url) {
+                error_log('[AICG] URL desde cURL redirect: ' . $curl_url);
+                return $curl_url;
+            }
+        }
+
+        error_log('[AICG] No se pudo resolver URL de Google News');
+        return false;
+    }
+
+    /**
+     * Resolver URL usando la API batchexecute de Google News
+     *
+     * Este método hace una petición POST a la API interna de Google News
+     * para obtener la URL real del artículo.
+     *
+     * @param string $url URL de Google News
+     * @return string|false
+     */
+    private function resolve_with_batchexecute($url) {
+        // Extraer el ID del artículo del path
+        if (!preg_match('/\/rss\/articles\/([A-Za-z0-9_-]+)/', $url, $matches)) {
+            if (!preg_match('/\/articles\/([A-Za-z0-9_-]+)/', $url, $matches)) {
+                return false;
+            }
+        }
+
+        $article_id = $matches[1];
+        $timestamp = time() * 1000; // milliseconds
+
+        // Construir el payload para batchexecute
+        // El formato es específico de la API interna de Google
+        $req_data = json_encode([
+            [
+                [
+                    "Fbv4je",
+                    "[\"garturlreq\",[[\"X\",\"X\",[\"X\",\"X\"],null,null,1,1,\"US:en\",null,1,null,null,null,null,null,0,1],\"X\",\"X\",1,[1,1,1],1,1,null,0,0,null,0],\"{$article_id}\",{$timestamp},\"X\"]"
+                ]
+            ]
+        ]);
+
+        $body = 'f.req=' . urlencode($req_data);
+
+        // Hacer la petición POST
+        $response = wp_remote_post('https://news.google.com/_/DotsSplashUi/data/batchexecute', array(
+            'timeout' => 30,
+            'headers' => array(
+                'Content-Type' => 'application/x-www-form-urlencoded;charset=UTF-8',
+                'User-Agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                'Accept' => '*/*',
+                'Accept-Language' => 'es-ES,es;q=0.9,en;q=0.8',
+                'Referer' => 'https://news.google.com/',
+                'Origin' => 'https://news.google.com',
+            ),
+            'body' => $body,
+        ));
+
+        if (is_wp_error($response)) {
+            error_log('[AICG] Error en batchexecute: ' . $response->get_error_message());
+            return false;
+        }
+
+        $response_body = wp_remote_retrieve_body($response);
+        $http_code = wp_remote_retrieve_response_code($response);
+
+        if ($http_code !== 200 || empty($response_body)) {
+            error_log('[AICG] batchexecute respuesta: HTTP ' . $http_code);
+            return false;
+        }
+
+        // La respuesta tiene un formato especial: comienza con )]}' y luego tiene JSON
+        // Buscar URLs en la respuesta
+        if (preg_match_all('#https?://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}[^"\'\s\\\]*#', $response_body, $url_matches)) {
+            foreach ($url_matches[0] as $found_url) {
+                // Limpiar caracteres de escape
+                $found_url = stripslashes($found_url);
+                $found_url = preg_replace('/\\\\u([0-9A-Fa-f]{4})/', '', $found_url); // Remover unicode escapes
+                $found_url = rtrim($found_url, '\\');
+
+                if ($this->is_valid_article_url($found_url)) {
+                    return $found_url;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Resolver URL usando cURL (sigue redirects de forma más agresiva)
+     *
+     * @param string $url
+     * @return string|false
+     */
+    private function resolve_with_curl($url) {
+        $ch = curl_init();
+
+        curl_setopt_array($ch, array(
+            CURLOPT_URL => $url,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_FOLLOWLOCATION => true,
+            CURLOPT_MAXREDIRS => 10,
+            CURLOPT_TIMEOUT => 20,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            CURLOPT_HTTPHEADER => array(
+                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
+            ),
+            CURLOPT_HEADER => false,
+        ));
+
+        $body = curl_exec($ch);
+        $final_url = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
+        curl_close($ch);
+
+        // Si la URL final es diferente y válida
+        if ($final_url && $final_url !== $url && $this->is_valid_article_url($final_url)) {
+            return $final_url;
+        }
+
+        // Buscar en el HTML si hay body
+        if (!empty($body)) {
+            // Meta refresh
+            if (preg_match('/<meta[^>]+http-equiv=["\']refresh["\'][^>]+content=["\'][^"\']*url=([^"\'>\s]+)/i', $body, $matches)) {
+                $refresh_url = html_entity_decode($matches[1]);
+                if ($this->is_valid_article_url($refresh_url)) {
+                    return $refresh_url;
+                }
+            }
+
+            // Canonical
+            if (preg_match('/<link[^>]+rel=["\']canonical["\'][^>]+href=["\']([^"\']+)/i', $body, $matches)) {
+                $canonical_url = html_entity_decode($matches[1]);
+                if ($this->is_valid_article_url($canonical_url)) {
+                    return $canonical_url;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Decodificar URL de Google News desde el parámetro base64
+     *
+     * Las URLs de Google News RSS tienen el formato:
+     * https://news.google.com/rss/articles/CBMi...
+     * donde CBMi... es una cadena protobuf que puede contener datos anidados
+     *
+     * @param string $google_url
+     * @return string|false
+     */
+    private function decode_google_news_url($google_url) {
+        // Extraer el path del artículo
+        $parsed = parse_url($google_url);
+        if (!isset($parsed['path'])) {
+            return false;
+        }
+
+        // El path es /rss/articles/ENCODED_STRING
+        if (!preg_match('/\/rss\/articles\/([A-Za-z0-9_-]+)/', $parsed['path'], $matches)) {
+            return false;
+        }
+
+        $encoded = $matches[1];
+
+        // Intentar decodificar recursivamente (Google usa codificación anidada)
+        $decoded = $this->decode_nested_base64($encoded);
+        if (!$decoded) {
+            return false;
+        }
+
+        // Buscar URLs en los datos decodificados
+        // Usar expresión regular más específica para URLs de artículos
+        if (preg_match_all('#(https?://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}(?:/[^\x00-\x1F\x7F\s"\'<>]*)?)?#', $decoded, $url_matches)) {
+            foreach ($url_matches[1] as $found_url) {
+                if (empty($found_url)) continue;
+
+                // Limpiar caracteres basura al final
+                $found_url = preg_replace('/[\x00-\x1F\x7F-\xFF]+.*$/', '', $found_url);
+                $found_url = rtrim($found_url, '?&#');
+
+                if ($this->is_valid_article_url($found_url)) {
+                    return $found_url;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Decodificar datos base64 anidados (protobuf de Google News)
+     *
+     * @param string $encoded Cadena codificada
+     * @param int $depth Profundidad máxima de recursión
+     * @return string|false Datos decodificados o false
+     */
+    private function decode_nested_base64($encoded, $depth = 0) {
+        if ($depth > 3) {
+            return false; // Evitar recursión infinita
+        }
+
+        // Convertir base64url a base64 estándar
+        $base64 = str_replace(array('-', '_'), array('+', '/'), $encoded);
+
+        // Agregar padding si es necesario
+        $padding = strlen($base64) % 4;
+        if ($padding) {
+            $base64 .= str_repeat('=', 4 - $padding);
+        }
+
+        $decoded = base64_decode($base64, true);
+        if ($decoded === false) {
+            return false;
+        }
+
+        // Si encontramos una URL válida, devolverla
+        if (preg_match('#https?://[a-zA-Z0-9\-\.]+\.[a-zA-Z]{2,}#', $decoded)) {
+            return $decoded;
+        }
+
+        // Buscar otra cadena base64 dentro (formato protobuf)
+        // Google anida los datos: el primer decode da algo como "AU_yqL..." que es otro base64
+        if (preg_match('/([A-Za-z0-9+\/_-]{20,})/', $decoded, $inner_matches)) {
+            $inner_result = $this->decode_nested_base64($inner_matches[1], $depth + 1);
+            if ($inner_result) {
+                return $inner_result;
+            }
+        }
+
+        return $decoded;
+    }
+
+    /**
+     * Verificar si una URL es válida para un artículo (no es de Google, gstatic, etc.)
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function is_valid_article_url($url) {
+        if (empty($url) || strpos($url, 'http') !== 0) {
+            return false;
+        }
+
+        // Lista de dominios a excluir
+        $excluded_domains = array(
+            'google.com',
+            'gstatic.com',
+            'googleapis.com',
+            'googleusercontent.com',
+            'googlesyndication.com',
+            'doubleclick.net',
+            'google-analytics.com',
+            'facebook.com',
+            'twitter.com',
+            'youtube.com'
+        );
+
+        $parsed = parse_url($url);
+        if (!isset($parsed['host'])) {
+            return false;
+        }
+
+        $host = strtolower($parsed['host']);
+        foreach ($excluded_domains as $excluded) {
+            if (strpos($host, $excluded) !== false) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    /**
+     * Validar que la URL de imagen es válida
+     *
+     * @param string $url
+     * @return string|false
+     */
+    private function validate_image_url($url) {
+        $url = trim($url);
+
+        // Verificar que es una URL válida
+        if (!filter_var($url, FILTER_VALIDATE_URL)) {
+            return false;
+        }
+
+        // Verificar que tiene extensión de imagen o es una URL de imagen conocida
+        $image_extensions = array('.jpg', '.jpeg', '.png', '.gif', '.webp');
+        $parsed = parse_url(strtolower($url));
+        $path = isset($parsed['path']) ? $parsed['path'] : '';
+
+        foreach ($image_extensions as $ext) {
+            if (strpos($path, $ext) !== false) {
+                return $url;
+            }
+        }
+
+        // Algunas URLs de imágenes no tienen extensión (ej: CDNs)
+        // Verificar dominios conocidos de imágenes
+        $image_hosts = array('cdn', 'img', 'image', 'static', 'media', 's3.amazonaws', 'cloudinary');
+        foreach ($image_hosts as $host) {
+            if (strpos($parsed['host'], $host) !== false) {
+                return $url;
+            }
+        }
+
+        // Aceptar URLs que parezcan de imágenes aunque no tengan extensión
+        if (strpos($url, '/image') !== false || strpos($url, '/img') !== false || strpos($url, '/foto') !== false) {
+            return $url;
+        }
+
+        return $url; // Intentar de todos modos
+    }
+
+    /**
+     * Extraer región/país de los titulares
+     *
+     * @param array $headlines
+     * @return string|false
+     */
+    private function extract_region_from_headlines($headlines) {
+        // Lista de países y regiones
+        $regions = array(
+            // Países de América
+            'estados unidos' => 'United States',
+            'eeuu' => 'United States',
+            'usa' => 'United States',
+            'méxico' => 'Mexico',
+            'mexico' => 'Mexico',
+            'canadá' => 'Canada',
+            'canada' => 'Canada',
+            'brasil' => 'Brazil',
+            'argentina' => 'Argentina',
+            'chile' => 'Chile',
+            'colombia' => 'Colombia',
+            'perú' => 'Peru',
+            'peru' => 'Peru',
+            'venezuela' => 'Venezuela',
+            'cuba' => 'Cuba',
+            'guatemala' => 'Guatemala',
+            'ecuador' => 'Ecuador',
+            'bolivia' => 'Bolivia',
+            'paraguay' => 'Paraguay',
+            'uruguay' => 'Uruguay',
+            'panamá' => 'Panama',
+            'panama' => 'Panama',
+            'costa rica' => 'Costa Rica',
+            'honduras' => 'Honduras',
+            'el salvador' => 'El Salvador',
+            'nicaragua' => 'Nicaragua',
+            'puerto rico' => 'Puerto Rico',
+            'república dominicana' => 'Dominican Republic',
+            'haití' => 'Haiti',
+            'haiti' => 'Haiti',
+
+            // Europa
+            'rusia' => 'Russia',
+            'ucrania' => 'Ukraine',
+            'alemania' => 'Germany',
+            'francia' => 'France',
+            'reino unido' => 'United Kingdom',
+            'inglaterra' => 'England',
+            'españa' => 'Spain',
+            'italia' => 'Italy',
+            'portugal' => 'Portugal',
+            'polonia' => 'Poland',
+            'holanda' => 'Netherlands',
+            'países bajos' => 'Netherlands',
+            'bélgica' => 'Belgium',
+            'belgica' => 'Belgium',
+            'suiza' => 'Switzerland',
+            'austria' => 'Austria',
+            'grecia' => 'Greece',
+            'turquía' => 'Turkey',
+            'turquia' => 'Turkey',
+            'suecia' => 'Sweden',
+            'noruega' => 'Norway',
+            'dinamarca' => 'Denmark',
+            'finlandia' => 'Finland',
+            'irlanda' => 'Ireland',
+            'escocia' => 'Scotland',
+            'rumania' => 'Romania',
+            'hungría' => 'Hungary',
+            'hungria' => 'Hungary',
+            'república checa' => 'Czech Republic',
+            'serbia' => 'Serbia',
+            'croacia' => 'Croatia',
+            'bulgaria' => 'Bulgaria',
+            'eslovaquia' => 'Slovakia',
+            'eslovenia' => 'Slovenia',
+
+            // Asia
+            'china' => 'China',
+            'japón' => 'Japan',
+            'japon' => 'Japan',
+            'corea del sur' => 'South Korea',
+            'corea del norte' => 'North Korea',
+            'india' => 'India',
+            'pakistán' => 'Pakistan',
+            'pakistan' => 'Pakistan',
+            'afganistán' => 'Afghanistan',
+            'afganistan' => 'Afghanistan',
+            'irán' => 'Iran',
+            'iran' => 'Iran',
+            'irak' => 'Iraq',
+            'iraq' => 'Iraq',
+            'siria' => 'Syria',
+            'israel' => 'Israel',
+            'palestina' => 'Palestine',
+            'gaza' => 'Gaza Strip',
+            'líbano' => 'Lebanon',
+            'libano' => 'Lebanon',
+            'arabia saudita' => 'Saudi Arabia',
+            'arabia saudí' => 'Saudi Arabia',
+            'emiratos árabes' => 'United Arab Emirates',
+            'dubai' => 'Dubai',
+            'qatar' => 'Qatar',
+            'tailandia' => 'Thailand',
+            'vietnam' => 'Vietnam',
+            'filipinas' => 'Philippines',
+            'indonesia' => 'Indonesia',
+            'malasia' => 'Malaysia',
+            'singapur' => 'Singapore',
+            'taiwán' => 'Taiwan',
+            'taiwan' => 'Taiwan',
+            'hong kong' => 'Hong Kong',
+            'bangladesh' => 'Bangladesh',
+            'nepal' => 'Nepal',
+            'myanmar' => 'Myanmar',
+            'birmania' => 'Myanmar',
+            'camboya' => 'Cambodia',
+            'laos' => 'Laos',
+            'kazajistán' => 'Kazakhstan',
+            'uzbekistán' => 'Uzbekistan',
+
+            // África
+            'egipto' => 'Egypt',
+            'sudáfrica' => 'South Africa',
+            'sudafrica' => 'South Africa',
+            'nigeria' => 'Nigeria',
+            'marruecos' => 'Morocco',
+            'argelia' => 'Algeria',
+            'túnez' => 'Tunisia',
+            'tunez' => 'Tunisia',
+            'libia' => 'Libya',
+            'sudán' => 'Sudan',
+            'sudan' => 'Sudan',
+            'etiopía' => 'Ethiopia',
+            'etiopia' => 'Ethiopia',
+            'kenia' => 'Kenya',
+            'kenya' => 'Kenya',
+            'tanzania' => 'Tanzania',
+            'uganda' => 'Uganda',
+            'zimbabue' => 'Zimbabwe',
+            'ghana' => 'Ghana',
+            'senegal' => 'Senegal',
+            'costa de marfil' => 'Ivory Coast',
+            'camerún' => 'Cameroon',
+            'camerun' => 'Cameroon',
+            'congo' => 'Congo',
+            'angola' => 'Angola',
+            'mozambique' => 'Mozambique',
+            'somalia' => 'Somalia',
+
+            // Oceanía
+            'australia' => 'Australia',
+            'nueva zelanda' => 'New Zealand',
+            'nueva zelandia' => 'New Zealand',
+
+            // Regiones
+            'medio oriente' => 'Middle East',
+            'oriente medio' => 'Middle East',
+            'unión europea' => 'European Union',
+            'union europea' => 'European Union',
+            'europa' => 'Europe',
+            'asia' => 'Asia',
+            'áfrica' => 'Africa',
+            'africa' => 'Africa',
+            'latinoamérica' => 'Latin America',
+            'latinoamerica' => 'Latin America',
+            'américa latina' => 'Latin America',
+            'centroamérica' => 'Central America',
+            'centroamerica' => 'Central America',
+            'sudamérica' => 'South America',
+            'sudamerica' => 'South America',
+            'norteamérica' => 'North America',
+            'norteamerica' => 'North America',
+            'caribe' => 'Caribbean',
+        );
+
+        // Buscar en los titulares
+        foreach ($headlines as $headline) {
+            $title = strtolower($headline['title']);
+
+            foreach ($regions as $spanish => $english) {
+                if (strpos($title, $spanish) !== false) {
+                    return $english;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Extraer región prominente (que aparece en múltiples titulares)
+     * Solo devuelve una región si aparece en al menos 2 titulares
+     *
+     * @param array $headlines
+     * @return string|false
+     */
+    private function extract_prominent_region_from_headlines($headlines) {
+        if (count($headlines) < 2) {
+            return false;
+        }
+
+        // Obtener la lista de regiones
+        $regions = $this->get_regions_list();
+
+        // Contar menciones de cada región
+        $region_counts = array();
+
+        foreach ($headlines as $headline) {
+            $title = strtolower($headline['title']);
+
+            foreach ($regions as $spanish => $english) {
+                if (strpos($title, $spanish) !== false) {
+                    if (!isset($region_counts[$english])) {
+                        $region_counts[$english] = 0;
+                    }
+                    $region_counts[$english]++;
+                    break; // Solo contar una región por titular
+                }
+            }
+        }
+
+        // Buscar la región más mencionada con al menos 2 menciones
+        if (!empty($region_counts)) {
+            arsort($region_counts);
+            $top_region = key($region_counts);
+            $top_count = current($region_counts);
+
+            if ($top_count >= 2) {
+                error_log('[AICG] Región prominente: ' . $top_region . ' (' . $top_count . ' menciones)');
+                return $top_region;
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Obtener lista de regiones (para reutilizar)
+     *
+     * @return array
+     */
+    private function get_regions_list() {
+        return array(
+            // Países de América
+            'estados unidos' => 'United States',
+            'eeuu' => 'United States',
+            'usa' => 'United States',
+            'méxico' => 'Mexico',
+            'mexico' => 'Mexico',
+            'canadá' => 'Canada',
+            'canada' => 'Canada',
+            'brasil' => 'Brazil',
+            'argentina' => 'Argentina',
+            'chile' => 'Chile',
+            'colombia' => 'Colombia',
+            'perú' => 'Peru',
+            'peru' => 'Peru',
+            'venezuela' => 'Venezuela',
+            'cuba' => 'Cuba',
+            'guatemala' => 'Guatemala',
+            'ecuador' => 'Ecuador',
+            'bolivia' => 'Bolivia',
+            'paraguay' => 'Paraguay',
+            'uruguay' => 'Uruguay',
+            'panamá' => 'Panama',
+            'panama' => 'Panama',
+            'costa rica' => 'Costa Rica',
+            'honduras' => 'Honduras',
+            'el salvador' => 'El Salvador',
+            'nicaragua' => 'Nicaragua',
+            // Europa
+            'rusia' => 'Russia',
+            'ucrania' => 'Ukraine',
+            'alemania' => 'Germany',
+            'francia' => 'France',
+            'reino unido' => 'United Kingdom',
+            'españa' => 'Spain',
+            'italia' => 'Italy',
+            // Asia
+            'china' => 'China',
+            'japón' => 'Japan',
+            'japon' => 'Japan',
+            'corea del sur' => 'South Korea',
+            'corea del norte' => 'North Korea',
+            'india' => 'India',
+            'irán' => 'Iran',
+            'iran' => 'Iran',
+            'israel' => 'Israel',
+            'palestina' => 'Palestine',
+            'gaza' => 'Gaza Strip',
+            // Regiones
+            'medio oriente' => 'Middle East',
+            'oriente medio' => 'Middle East',
+            'europa' => 'Europe',
+            'asia' => 'Asia'
+        );
+    }
+
+    /**
+     * Obtener imagen de mapa de una región
+     *
+     * @param string $region Nombre de la región en inglés
+     * @return array|WP_Error
+     */
+    private function fetch_map_image($region) {
+        // Usar Wikimedia Commons para mapas
+        // Buscar mapa de ubicación o mapa político
+        $search_terms = array(
+            $region . ' location map',
+            $region . ' in the world',
+            $region . ' map',
+        );
+
+        foreach ($search_terms as $term) {
+            $image_url = $this->search_wikimedia_map($term);
+            if ($image_url) {
+                $attachment_id = $this->save_image_to_media_library($image_url);
+                if (!is_wp_error($attachment_id)) {
+                    return array('attachment_id' => $attachment_id);
+                }
+            }
+        }
+
+        return new WP_Error('no_map_found', __('No se encontró mapa para la región', 'ai-content-generator'));
+    }
+
+    /**
+     * Buscar mapa en Wikimedia Commons
+     *
+     * @param string $query Término de búsqueda
+     * @return string|false URL de la imagen
+     */
+    private function search_wikimedia_map($query) {
+        // API de Wikimedia Commons
+        $api_url = 'https://commons.wikimedia.org/w/api.php?' . http_build_query(array(
+            'action' => 'query',
+            'list' => 'search',
+            'srsearch' => $query . ' filetype:bitmap',
+            'srnamespace' => '6', // File namespace
+            'srlimit' => '5',
+            'format' => 'json',
+        ));
+
+        $response = wp_remote_get($api_url, array(
+            'timeout' => 15,
+            'headers' => array(
+                'User-Agent' => 'WordPress AI Content Generator Plugin'
+            )
+        ));
+
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        if (empty($data['query']['search'])) {
+            return false;
+        }
+
+        // Buscar el primer resultado que sea un mapa
+        foreach ($data['query']['search'] as $result) {
+            $title = $result['title'];
+
+            // Filtrar para obtener solo mapas (evitar banderas, escudos, etc.)
+            $title_lower = strtolower($title);
+            if (strpos($title_lower, 'map') !== false ||
+                strpos($title_lower, 'location') !== false ||
+                strpos($title_lower, 'mapa') !== false) {
+
+                // Evitar mapas muy viejos o de baja calidad
+                if (strpos($title_lower, 'flag') !== false ||
+                    strpos($title_lower, 'coat of arms') !== false ||
+                    strpos($title_lower, 'escudo') !== false) {
+                    continue;
+                }
+
+                // Obtener URL de la imagen
+                $image_url = $this->get_wikimedia_image_url($title);
+                if ($image_url) {
+                    return $image_url;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Obtener URL directa de imagen de Wikimedia
+     *
+     * @param string $title Título del archivo (ej: "File:Map.png")
+     * @return string|false
+     */
+    private function get_wikimedia_image_url($title) {
+        $api_url = 'https://commons.wikimedia.org/w/api.php?' . http_build_query(array(
+            'action' => 'query',
+            'titles' => $title,
+            'prop' => 'imageinfo',
+            'iiprop' => 'url|size',
+            'iiurlwidth' => '1200', // Solicitar versión de 1200px de ancho
+            'format' => 'json',
+        ));
+
+        $response = wp_remote_get($api_url, array(
+            'timeout' => 15,
+            'headers' => array(
+                'User-Agent' => 'WordPress AI Content Generator Plugin'
+            )
+        ));
+
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $data = json_decode(wp_remote_retrieve_body($response), true);
+        $pages = isset($data['query']['pages']) ? $data['query']['pages'] : array();
+
+        foreach ($pages as $page) {
+            if (isset($page['imageinfo'][0])) {
+                $info = $page['imageinfo'][0];
+                // Preferir la versión redimensionada si está disponible
+                if (isset($info['thumburl'])) {
+                    return $info['thumburl'];
+                }
+                return $info['url'];
+            }
+        }
+
+        return false;
+    }
+
+    /**
+     * Generar imagen con IA (método original)
      *
      * @param array $headlines
      * @return array|WP_Error
      */
-    private function generate_featured_image($headlines) {
+    private function generate_ai_image($headlines) {
         // Obtener proveedor de imágenes
         $image_provider = AICG_AI_Provider_Factory::get_image_provider();
 
@@ -1005,7 +1990,8 @@ EJEMPLO DE FORMATO:
 
         return array(
             'attachment_id' => $attachment_id,
-            'cost' => isset($image_result['cost']) ? $image_result['cost'] : 0
+            'cost' => isset($image_result['cost']) ? $image_result['cost'] : 0,
+            'source' => 'ai_generated'
         );
     }
 
@@ -1148,6 +2134,276 @@ EJEMPLO DE FORMATO:
         error_log('[AICG] Image saved with attachment ID: ' . $attachment_id);
 
         return $attachment_id;
+    }
+
+    /**
+     * Descargar imagen y redimensionar para carrusel
+     *
+     * @param string $image_url URL de la imagen
+     * @param string $title Título de la noticia (para alt text)
+     * @param int $max_width Ancho máximo (default 400px)
+     * @param int $max_height Alto máximo (default 225px)
+     * @return array|WP_Error Array con attachment_id y url, o WP_Error
+     */
+    private function download_and_resize_image($image_url, $title = '', $max_width = 400, $max_height = 225) {
+        require_once(ABSPATH . 'wp-admin/includes/media.php');
+        require_once(ABSPATH . 'wp-admin/includes/file.php');
+        require_once(ABSPATH . 'wp-admin/includes/image.php');
+
+        // Generar nombre único basado en URL
+        $url_hash = md5($image_url);
+        $filename = 'carousel-' . $url_hash . '-' . date('Ymd');
+
+        // Verificar si ya existe esta imagen (evitar duplicados)
+        $existing = get_posts(array(
+            'post_type' => 'attachment',
+            'meta_key' => '_aicg_source_url_hash',
+            'meta_value' => $url_hash,
+            'posts_per_page' => 1
+        ));
+
+        if (!empty($existing)) {
+            $attachment_id = $existing[0]->ID;
+            $thumb_url = wp_get_attachment_image_url($attachment_id, 'medium');
+            error_log('[AICG] Imagen ya existe en biblioteca: ' . $attachment_id);
+            return array(
+                'attachment_id' => $attachment_id,
+                'url' => $thumb_url ?: wp_get_attachment_url($attachment_id)
+            );
+        }
+
+        // Descargar imagen
+        $tmp_file = download_url($image_url, 30);
+
+        if (is_wp_error($tmp_file)) {
+            error_log('[AICG] Error descargando imagen para carrusel: ' . $tmp_file->get_error_message());
+            return $tmp_file;
+        }
+
+        // Detectar tipo MIME
+        $finfo = finfo_open(FILEINFO_MIME_TYPE);
+        $mime_type = finfo_file($finfo, $tmp_file);
+        finfo_close($finfo);
+
+        // Solo procesar imágenes válidas
+        $valid_mimes = array('image/jpeg', 'image/png', 'image/gif', 'image/webp');
+        if (!in_array($mime_type, $valid_mimes)) {
+            @unlink($tmp_file);
+            return new WP_Error('invalid_image', __('Tipo de imagen no válido', 'ai-content-generator'));
+        }
+
+        $ext = 'jpg';
+        if ($mime_type === 'image/png') {
+            $ext = 'png';
+        } elseif ($mime_type === 'image/gif') {
+            $ext = 'gif';
+        } elseif ($mime_type === 'image/webp') {
+            $ext = 'webp';
+        }
+
+        // Redimensionar imagen si es necesario
+        $resized_file = $this->resize_image_file($tmp_file, $max_width, $max_height, $mime_type);
+        if ($resized_file && $resized_file !== $tmp_file) {
+            @unlink($tmp_file);
+            $tmp_file = $resized_file;
+        }
+
+        $file_array = array(
+            'name' => $filename . '.' . $ext,
+            'tmp_name' => $tmp_file
+        );
+
+        // Subir a biblioteca de medios
+        $alt_text = $title ?: __('Imagen de noticia', 'ai-content-generator');
+        $attachment_id = media_handle_sideload($file_array, 0, $alt_text);
+
+        if (is_wp_error($attachment_id)) {
+            @unlink($tmp_file);
+            error_log('[AICG] Error guardando imagen carrusel: ' . $attachment_id->get_error_message());
+            return $attachment_id;
+        }
+
+        // Guardar hash de URL para evitar duplicados
+        update_post_meta($attachment_id, '_aicg_source_url_hash', $url_hash);
+        update_post_meta($attachment_id, '_aicg_source_url', $image_url);
+
+        // Actualizar alt text
+        update_post_meta($attachment_id, '_wp_attachment_image_alt', $alt_text);
+
+        $thumb_url = wp_get_attachment_image_url($attachment_id, 'medium');
+
+        error_log('[AICG] Imagen carrusel guardada: ' . $attachment_id);
+
+        return array(
+            'attachment_id' => $attachment_id,
+            'url' => $thumb_url ?: wp_get_attachment_url($attachment_id)
+        );
+    }
+
+    /**
+     * Redimensionar archivo de imagen
+     *
+     * @param string $file_path Ruta al archivo temporal
+     * @param int $max_width Ancho máximo
+     * @param int $max_height Alto máximo
+     * @param string $mime_type Tipo MIME
+     * @return string|false Ruta al archivo redimensionado o false
+     */
+    private function resize_image_file($file_path, $max_width, $max_height, $mime_type) {
+        // Obtener dimensiones originales
+        $image_size = getimagesize($file_path);
+        if (!$image_size) {
+            return false;
+        }
+
+        $orig_width = $image_size[0];
+        $orig_height = $image_size[1];
+
+        // Si ya es suficientemente pequeña, no redimensionar
+        if ($orig_width <= $max_width && $orig_height <= $max_height) {
+            return $file_path;
+        }
+
+        // Calcular nuevas dimensiones manteniendo proporción
+        $ratio = min($max_width / $orig_width, $max_height / $orig_height);
+        $new_width = round($orig_width * $ratio);
+        $new_height = round($orig_height * $ratio);
+
+        // Usar el editor de imágenes de WordPress
+        $editor = wp_get_image_editor($file_path);
+        if (is_wp_error($editor)) {
+            error_log('[AICG] No se pudo crear editor de imagen: ' . $editor->get_error_message());
+            return false;
+        }
+
+        $editor->resize($new_width, $new_height, false);
+        $editor->set_quality(85);
+
+        // Guardar en archivo temporal
+        $resized_path = $file_path . '_resized';
+        $result = $editor->save($resized_path);
+
+        if (is_wp_error($result)) {
+            error_log('[AICG] Error redimensionando: ' . $result->get_error_message());
+            return false;
+        }
+
+        return $result['path'];
+    }
+
+    /**
+     * Extraer imágenes de noticias para un tema y crear carrusel
+     *
+     * @param array $news Array de noticias con 'link' y 'title'
+     * @param string $topic_name Nombre del tema
+     * @return array Array con 'images' (array de imágenes) y 'html' (HTML del carrusel)
+     */
+    private function extract_topic_images($news, $topic_name) {
+        $images = array();
+        $max_images = 5; // Máximo de imágenes por carrusel
+
+        // Verificar si está habilitada la extracción de imágenes OG
+        $use_og = get_option('aicg_image_source_og', true);
+        if (!$use_og) {
+            return array('images' => array(), 'html' => '');
+        }
+
+        foreach (array_slice($news, 0, $max_images) as $item) {
+            if (empty($item['link'])) {
+                continue;
+            }
+
+            // Obtener imagen OG de la noticia
+            $og_image_url = $this->get_og_image_from_url($item['link']);
+            if (!$og_image_url) {
+                continue;
+            }
+
+            // Descargar y redimensionar
+            $result = $this->download_and_resize_image(
+                $og_image_url,
+                isset($item['title']) ? $item['title'] : '',
+                400,
+                225
+            );
+
+            if (!is_wp_error($result)) {
+                $images[] = array(
+                    'url' => $result['url'],
+                    'attachment_id' => $result['attachment_id'],
+                    'title' => isset($item['title']) ? $item['title'] : '',
+                    'link' => $item['link'],
+                    'source' => isset($item['source']) ? $item['source'] : ''
+                );
+            }
+        }
+
+        // Generar HTML del carrusel
+        $html = $this->generate_carousel_html($images, $topic_name);
+
+        return array(
+            'images' => $images,
+            'html' => $html
+        );
+    }
+
+    /**
+     * Generar HTML de la galería horizontal de imágenes
+     * Usa solo CSS inline para compatibilidad con WordPress (sin JavaScript)
+     *
+     * @param array $images Array de imágenes
+     * @param string $topic_name Nombre del tema
+     * @return string HTML de la galería
+     */
+    private function generate_carousel_html($images, $topic_name) {
+        if (empty($images)) {
+            return '';
+        }
+
+        $gallery_id = 'aicg-gallery-' . sanitize_title($topic_name) . '-' . uniqid();
+
+        ob_start();
+        ?>
+        <div id="<?php echo esc_attr($gallery_id); ?>" style="margin: 15px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+            <div style="display: flex; gap: 10px; padding: 5px 0;">
+                <?php foreach ($images as $image) : ?>
+                <a href="<?php echo esc_url($image['link']); ?>" target="_blank" rel="noopener noreferrer" style="flex: 0 0 auto; text-decoration: none; display: block; width: 180px; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); background: #fff;">
+                    <img src="<?php echo esc_url($image['url']); ?>"
+                         alt="<?php echo esc_attr($image['title']); ?>"
+                         loading="lazy"
+                         style="width: 180px; height: 100px; object-fit: cover; display: block;">
+                    <div style="padding: 8px; background: #f9f9f9;">
+                        <span style="display: block; font-size: 11px; line-height: 1.3; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><?php echo esc_html(wp_trim_words($image['title'], 8)); ?></span>
+                        <?php if (!empty($image['source'])) : ?>
+                        <span style="display: block; font-size: 9px; color: #666; margin-top: 2px;"><?php echo esc_html($image['source']); ?></span>
+                        <?php endif; ?>
+                    </div>
+                </a>
+                <?php endforeach; ?>
+            </div>
+        </div>
+        <?php
+        return ob_get_clean();
+    }
+
+    /**
+     * Obtener CSS de la galería (mantenido por compatibilidad)
+     * La galería ahora usa CSS inline para compatibilidad con WordPress
+     *
+     * @return string CSS vacío
+     */
+    public static function get_carousel_css() {
+        return '';
+    }
+
+    /**
+     * Obtener JavaScript de la galería (ya no es necesario)
+     * La galería ahora es estática con scroll horizontal nativo
+     *
+     * @return string JavaScript vacío
+     */
+    public static function get_carousel_js() {
+        return '';
     }
 
     /**

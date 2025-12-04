@@ -503,7 +503,7 @@ if (!defined('ABSPATH')) {
 
                         <tr>
                             <th scope="row">
-                                <label for="aicg_news_generate_image"><?php esc_html_e('Imagen Generada por IA', 'ai-content-generator'); ?></label>
+                                <label for="aicg_news_generate_image"><?php esc_html_e('Generar Imagen', 'ai-content-generator'); ?></label>
                             </th>
                             <td>
                                 <label>
@@ -512,11 +512,96 @@ if (!defined('ABSPATH')) {
                                            id="aicg_news_generate_image"
                                            value="1"
                                            <?php checked(get_option('aicg_news_generate_image', false)); ?>>
-                                    <?php esc_html_e('Generar imagen con IA basada en los titulares', 'ai-content-generator'); ?>
+                                    <?php esc_html_e('Obtener/generar imagen para el resumen de noticias', 'ai-content-generator'); ?>
                                 </label>
                                 <p class="description">
-                                    <?php esc_html_e('La imagen generada se insertará al inicio del contenido del resumen (debajo del título, antes del texto).', 'ai-content-generator'); ?>
+                                    <?php esc_html_e('La imagen se insertará al inicio del contenido del resumen (debajo del título, antes del texto).', 'ai-content-generator'); ?>
                                 </p>
+                            </td>
+                        </tr>
+
+                        <tr id="aicg-image-sources-row" style="<?php echo get_option('aicg_news_generate_image', false) ? '' : 'display: none;'; ?>">
+                            <th scope="row">
+                                <label><?php esc_html_e('Fuentes de Imagen Destacada', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <fieldset>
+                                    <legend class="screen-reader-text"><?php esc_html_e('Fuentes de imagen', 'ai-content-generator'); ?></legend>
+
+                                    <p class="description" style="margin-bottom: 10px;">
+                                        <?php esc_html_e('Selecciona las fuentes para la imagen destacada principal. Se intentarán en orden:', 'ai-content-generator'); ?>
+                                    </p>
+
+                                    <label style="display: block; margin-bottom: 8px;">
+                                        <input type="checkbox"
+                                               name="aicg_image_source_og"
+                                               id="aicg_image_source_og"
+                                               value="1"
+                                               <?php checked(get_option('aicg_image_source_og', true)); ?>>
+                                        <strong><?php esc_html_e('1. Imagen OG de fuentes', 'ai-content-generator'); ?></strong>
+                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
+                                            <?php esc_html_e('Extrae la imagen og:image o twitter:image de los artículos de noticias originales.', 'ai-content-generator'); ?>
+                                        </span>
+                                    </label>
+
+                                    <label style="display: block; margin-bottom: 8px;">
+                                        <input type="checkbox"
+                                               name="aicg_image_source_map"
+                                               id="aicg_image_source_map"
+                                               value="1"
+                                               <?php checked(get_option('aicg_image_source_map', true)); ?>>
+                                        <strong><?php esc_html_e('2. Mapa de región', 'ai-content-generator'); ?></strong>
+                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
+                                            <?php esc_html_e('Si se detecta un país/región en los titulares, busca un mapa en Wikimedia Commons.', 'ai-content-generator'); ?>
+                                        </span>
+                                    </label>
+
+                                    <label style="display: block; margin-bottom: 8px;">
+                                        <input type="checkbox"
+                                               name="aicg_image_source_ai"
+                                               id="aicg_image_source_ai"
+                                               value="1"
+                                               <?php checked(get_option('aicg_image_source_ai', true)); ?>>
+                                        <strong><?php esc_html_e('3. Generación con IA', 'ai-content-generator'); ?></strong>
+                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
+                                            <?php esc_html_e('Genera una imagen con DALL-E basada en los titulares (tiene costo adicional).', 'ai-content-generator'); ?>
+                                        </span>
+                                    </label>
+
+                                    <p class="description" style="margin-top: 10px; padding: 8px; background: #f0f6fc; border-left: 4px solid #0073aa;">
+                                        <span class="dashicons dashicons-info"></span>
+                                        <?php esc_html_e('Las fuentes se intentan en orden. Si una falla o está desactivada, se pasa a la siguiente. Si todas fallan, no se incluirá imagen.', 'ai-content-generator'); ?>
+                                    </p>
+                                </fieldset>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_news_carousel_enabled"><?php esc_html_e('Galería de Imágenes', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <label>
+                                    <input type="checkbox"
+                                           name="aicg_news_carousel_enabled"
+                                           id="aicg_news_carousel_enabled"
+                                           value="1"
+                                           <?php checked(get_option('aicg_news_carousel_enabled', true)); ?>>
+                                    <?php esc_html_e('Mostrar galería horizontal de imágenes en cada sección/tema', 'ai-content-generator'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php esc_html_e('Cada tema mostrará una galería horizontal con las imágenes de sus noticias. Las imágenes se descargan, redimensionan y guardan en la biblioteca de medios.', 'ai-content-generator'); ?>
+                                </p>
+                                <div style="margin-top: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
+                                    <strong><?php esc_html_e('Características de la galería:', 'ai-content-generator'); ?></strong>
+                                    <ul style="margin: 5px 0 0 20px; list-style: disc;">
+                                        <li><?php esc_html_e('Hasta 5 imágenes por tema', 'ai-content-generator'); ?></li>
+                                        <li><?php esc_html_e('Imágenes redimensionadas a 400x225px', 'ai-content-generator'); ?></li>
+                                        <li><?php esc_html_e('Scroll horizontal para navegar', 'ai-content-generator'); ?></li>
+                                        <li><?php esc_html_e('Compatible con WordPress (sin JavaScript)', 'ai-content-generator'); ?></li>
+                                        <li><?php esc_html_e('Click en imagen para ir a la noticia original', 'ai-content-generator'); ?></li>
+                                    </ul>
+                                </div>
                             </td>
                         </tr>
 

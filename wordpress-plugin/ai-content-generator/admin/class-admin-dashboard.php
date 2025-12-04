@@ -176,6 +176,7 @@ class AICG_Admin_Dashboard {
             'title' => $result['title'],
             'news_count' => $result['news_count'],
             'topics_processed' => $result['topics_processed'],
+            'topics_details' => isset($result['topics_details']) ? $result['topics_details'] : array(),
             'tokens_used' => $result['tokens_used'],
             'cost' => number_format($result['cost'], 4),
             'edit_url' => get_edit_post_link($result['post_id'], 'raw'),

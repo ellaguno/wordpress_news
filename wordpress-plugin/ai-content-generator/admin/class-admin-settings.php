@@ -282,6 +282,32 @@ class AICG_Admin_Settings {
             'default' => false
         ));
 
+        // Fuentes de imagen (esquema híbrido)
+        register_setting('aicg-settings', 'aicg_image_source_og', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ));
+
+        register_setting('aicg-settings', 'aicg_image_source_map', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ));
+
+        register_setting('aicg-settings', 'aicg_image_source_ai', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ));
+
+        // Carrusel de imágenes por tema
+        register_setting('aicg-settings', 'aicg_news_carousel_enabled', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => true
+        ));
+
         // Estilo de referencias
         register_setting('aicg-settings', 'aicg_reference_style', array(
             'type' => 'string',
