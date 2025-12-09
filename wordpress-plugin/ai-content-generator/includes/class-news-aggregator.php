@@ -556,7 +556,60 @@ class AICG_News_Aggregator {
      * @return array
      */
     private function fetch_news_for_topic($topic) {
-        // Usar plantilla de búsqueda configurable
+        $all_news = array();
+
+        // 1. Primero buscar en fuentes RSS personalizadas que tengan feeds específicos del tema
+        $custom_sources = get_option('aicg_news_sources', array());
+        $topic_lower = strtolower(trim($topic));
+
+        // Mapeo de temas a dominios/fuentes relevantes
+        $topic_source_mapping = array(
+            'criptomonedas' => array('cointelegraph', 'crypto', 'bitcoin', 'coindesk', 'decrypt'),
+            'tecnología' => array('xataka', 'wired', 'techcrunch', 'verge', 'engadget', 'ars'),
+            'tecnologia' => array('xataka', 'wired', 'techcrunch', 'verge', 'engadget', 'ars'),
+            'ciencia y tecnología' => array('xataka', 'wired', 'science', 'nature', 'scientific'),
+            'ciencia' => array('science', 'nature', 'scientific', 'nasa'),
+            'seguridad' => array('wired', 'security', 'krebs', 'bleeping'),
+        );
+
+        // Buscar en fuentes personalizadas relevantes para este tema
+        $relevant_keywords = isset($topic_source_mapping[$topic_lower]) ? $topic_source_mapping[$topic_lower] : array();
+
+        foreach ($custom_sources as $source) {
+            if (!isset($source['activo']) || !$source['activo']) {
+                continue;
+            }
+
+            $source_url_lower = strtolower($source['url']);
+            $source_name_lower = strtolower($source['nombre'] ?? '');
+
+            // Verificar si esta fuente es relevante para el tema
+            $is_relevant_source = false;
+            foreach ($relevant_keywords as $keyword) {
+                if (strpos($source_url_lower, $keyword) !== false || strpos($source_name_lower, $keyword) !== false) {
+                    $is_relevant_source = true;
+                    break;
+                }
+            }
+
+            if ($is_relevant_source) {
+                error_log('[AICG] Consultando fuente personalizada para "' . $topic . '": ' . $source['url']);
+                $source_news = $this->fetch_rss_feed($source['url']);
+
+                // Agregar nombre de la fuente a cada noticia
+                $source_name = !empty($source['nombre']) ? $source['nombre'] : 'RSS Feed';
+                foreach ($source_news as &$item) {
+                    if (empty($item['source'])) {
+                        $item['source'] = $source_name;
+                    }
+                }
+
+                $all_news = array_merge($all_news, $source_news);
+                error_log('[AICG] Noticias obtenidas de ' . $source['nombre'] . ': ' . count($source_news));
+            }
+        }
+
+        // 2. Luego buscar en Google News usando la plantilla
         $default_template = 'https://news.google.com/rss/search?q={topic}&hl=es-419&gl=MX&ceid=MX:es-419';
         $template = get_option('aicg_news_search_template', $default_template);
 
@@ -569,14 +622,49 @@ class AICG_News_Aggregator {
         error_log('[AICG] Tema "' . $topic . '" mejorado a: "' . $enhanced_topic . '"');
 
         $url = str_replace('{topic}', urlencode($enhanced_topic), $template);
-        $news = $this->fetch_rss_feed($url);
-        $count_before_relevance = count($news);
+        $google_news = $this->fetch_rss_feed($url);
+
+        // Combinar noticias de fuentes personalizadas con Google News
+        $all_news = array_merge($all_news, $google_news);
+        $count_before_relevance = count($all_news);
+
+        error_log('[AICG] Total noticias combinadas para "' . $topic . '": ' . $count_before_relevance . ' (personalizadas: ' . (count($all_news) - count($google_news)) . ', Google: ' . count($google_news) . ')');
 
         // Filtrar noticias que no sean relevantes al tema
-        $news = $this->filter_relevant_news($news, $topic);
+        $news = $this->filter_relevant_news($all_news, $topic);
         error_log('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . $count_before_relevance . ')');
 
+        // Eliminar duplicados por título similar
+        $news = $this->remove_duplicate_news($news);
+
         return $news;
+    }
+
+    /**
+     * Eliminar noticias duplicadas por título similar
+     *
+     * @param array $news
+     * @return array
+     */
+    private function remove_duplicate_news($news) {
+        $unique_news = array();
+        $seen_titles = array();
+
+        foreach ($news as $item) {
+            // Normalizar título para comparación
+            $normalized_title = strtolower(preg_replace('/[^a-z0-9\s]/i', '', $item['title']));
+            $normalized_title = preg_replace('/\s+/', ' ', trim($normalized_title));
+
+            // Verificar si ya existe un título similar (primeras 50 caracteres)
+            $title_key = substr($normalized_title, 0, 50);
+
+            if (!isset($seen_titles[$title_key])) {
+                $seen_titles[$title_key] = true;
+                $unique_news[] = $item;
+            }
+        }
+
+        return $unique_news;
     }
 
     /**
@@ -645,7 +733,19 @@ class AICG_News_Aggregator {
             'ciencia y tecnología' => array('ciencia', 'tecnología', 'científico', 'investigación', 'descubrimiento', 'nasa', 'ia', 'inteligencia artificial'),
             'tecnología' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
             'tecnologia' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
-            'criptomonedas' => array('bitcoin', 'crypto', 'criptomoneda', 'ethereum', 'blockchain', 'btc', 'token', 'nft'),
+            // Keywords ampliadas para criptomonedas
+            'criptomonedas' => array(
+                'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cripto',
+                'criptomoneda', 'criptomonedas', 'criptodivisa', 'criptodivisas',
+                'blockchain', 'cadena de bloques', 'token', 'tokens', 'nft',
+                'binance', 'coinbase', 'kraken', 'bitso', 'exchange',
+                'minería', 'minar', 'minero', 'halving', 'satoshi',
+                'altcoin', 'stablecoin', 'usdt', 'tether', 'usdc',
+                'solana', 'cardano', 'dogecoin', 'doge', 'ripple', 'xrp',
+                'defi', 'web3', 'metaverso', 'wallet', 'billetera digital',
+                'moneda digital', 'moneda virtual', 'activo digital',
+                'cointelegraph', 'coindesk', 'mercado cripto'
+            ),
             'negocios' => array('empresa', 'negocio', 'corporativo', 'ceo', 'fusión', 'adquisición', 'startup', 'compañía'),
             'conflictos y guerra' => array('guerra', 'conflicto', 'militar', 'ejército', 'ataque', 'bombardeo', 'tropas', 'ucrania', 'gaza', 'israel'),
             'deportes' => array('fútbol', 'futbol', 'deporte', 'liga', 'gol', 'campeón', 'campeon', 'olimpico', 'olímpico', 'nba', 'nfl', 'mundial', 'jugador', 'equipo', 'partido', 'torneo'),
@@ -869,11 +969,66 @@ FORMATO DE SALIDA REQUERIDO:
         // Obtener prompt del sistema personalizado
         $system_prompt = get_option('aicg_news_system_prompt', 'Eres un periodista experto que resume noticias de forma objetiva y precisa. Usas HTML puro, nunca Markdown.');
 
-        return $this->provider->generate_text($prompt, array(
+        $result = $this->provider->generate_text($prompt, array(
             'max_tokens' => 1000,
             'temperature' => 0.5,
             'system_message' => $system_prompt
         ));
+
+        // Post-procesar para convertir Markdown a HTML si la IA lo ignoró
+        if (!is_wp_error($result) && !empty($result['content'])) {
+            $result['content'] = $this->convert_markdown_to_html($result['content']);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Convertir Markdown básico a HTML
+     * (para cuando la IA ignora las instrucciones de usar HTML)
+     *
+     * @param string $text
+     * @return string
+     */
+    private function convert_markdown_to_html($text) {
+        // Convertir **texto** a <strong>texto</strong>
+        $text = preg_replace('/\*\*([^*]+)\*\*/', '<strong>$1</strong>', $text);
+
+        // Convertir *texto* a <em>texto</em> (pero no si ya es parte de **)
+        $text = preg_replace('/(?<!\*)\*([^*]+)\*(?!\*)/', '<em>$1</em>', $text);
+
+        // Convertir __texto__ a <strong>texto</strong>
+        $text = preg_replace('/__([^_]+)__/', '<strong>$1</strong>', $text);
+
+        // Convertir _texto_ a <em>texto</em>
+        $text = preg_replace('/(?<!_)_([^_]+)_(?!_)/', '<em>$1</em>', $text);
+
+        // Convertir [texto](url) a <a href="url">texto</a>
+        $text = preg_replace('/\[([^\]]+)\]\(([^)]+)\)/', '<a href="$2" target="_blank" rel="noopener">$1</a>', $text);
+
+        // Convertir líneas que empiezan con # a headings (si no están ya en tags)
+        $text = preg_replace('/^### (.+)$/m', '<h4>$1</h4>', $text);
+        $text = preg_replace('/^## (.+)$/m', '<h3>$1</h3>', $text);
+        $text = preg_replace('/^# (.+)$/m', '<h2>$1</h2>', $text);
+
+        // Envolver párrafos sueltos en <p> si no están ya
+        // Primero detectar si hay tags <p> existentes
+        if (strpos($text, '<p>') === false) {
+            // Dividir por doble salto de línea y envolver cada párrafo
+            $paragraphs = preg_split('/\n\s*\n/', $text);
+            $paragraphs = array_map(function($p) {
+                $p = trim($p);
+                if (empty($p)) return '';
+                // No envolver si ya es un tag de bloque
+                if (preg_match('/^<(h[1-6]|ul|ol|li|div|blockquote|table|figure)/', $p)) {
+                    return $p;
+                }
+                return '<p>' . $p . '</p>';
+            }, $paragraphs);
+            $text = implode("\n", array_filter($paragraphs));
+        }
+
+        return $text;
     }
 
     /**
@@ -929,11 +1084,18 @@ EJEMPLO DE FORMATO:
         // Obtener prompt del sistema personalizado
         $system_prompt = get_option('aicg_news_system_prompt', 'Eres un periodista experto que resume noticias de forma objetiva. Usas HTML puro, nunca Markdown.');
 
-        return $this->provider->generate_text($prompt, array(
+        $result = $this->provider->generate_text($prompt, array(
             'max_tokens' => 1500,
             'temperature' => 0.5,
             'system_message' => $system_prompt
         ));
+
+        // Post-procesar para convertir Markdown a HTML si la IA lo ignoró
+        if (!is_wp_error($result) && !empty($result['content'])) {
+            $result['content'] = $this->convert_markdown_to_html($result['content']);
+        }
+
+        return $result;
     }
 
     /**
@@ -994,6 +1156,12 @@ EJEMPLO DE FORMATO:
 
         $table = $wpdb->prefix . 'aicg_used_urls';
 
+        // Verificar si la tabla existe, si no, crearla
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
+        if (!$table_exists) {
+            $this->create_used_urls_table();
+        }
+
         foreach ($urls as $url) {
             $wpdb->replace(
                 $table,
@@ -1010,6 +1178,29 @@ EJEMPLO DE FORMATO:
     }
 
     /**
+     * Crear tabla de URLs usadas si no existe
+     */
+    private function create_used_urls_table() {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'aicg_used_urls';
+        $charset_collate = $wpdb->get_charset_collate();
+
+        $sql = "CREATE TABLE IF NOT EXISTS $table (
+            id bigint(20) NOT NULL AUTO_INCREMENT,
+            url varchar(500) NOT NULL,
+            used_at datetime DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY url (url(255))
+        ) $charset_collate;";
+
+        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
+        dbDelta($sql);
+
+        error_log('[AICG] Tabla ' . $table . ' creada/verificada');
+    }
+
+    /**
      * Generar imagen destacada usando esquema híbrido:
      * 1. Intentar extraer imagen OG/Twitter de las fuentes (si está habilitado)
      * 2. Si falla, buscar imagen de mapa de la región mencionada (si está habilitado)
@@ -1020,57 +1211,12 @@ EJEMPLO DE FORMATO:
      * @return array|WP_Error
      */
     private function generate_featured_image($headlines, $news_items = array()) {
-        error_log('[AICG] Iniciando generación híbrida de imagen');
+        error_log('[AICG] Iniciando generación de imagen del resumen');
 
-        // Obtener configuración de fuentes de imagen
-        $use_og = get_option('aicg_image_source_og', true);
-        $use_map = get_option('aicg_image_source_map', true);
-        $use_ai = get_option('aicg_image_source_ai', true);
-
-        error_log('[AICG] Fuentes habilitadas - OG: ' . ($use_og ? 'sí' : 'no') . ', Mapa: ' . ($use_map ? 'sí' : 'no') . ', IA: ' . ($use_ai ? 'sí' : 'no'));
-
-        // PASO 1: Intentar extraer imagen OG/Twitter de las fuentes
-        if ($use_og && !empty($news_items)) {
-            $og_image = $this->extract_og_image_from_sources($news_items);
-            if (!is_wp_error($og_image) && !empty($og_image['attachment_id'])) {
-                error_log('[AICG] Imagen OG extraída exitosamente');
-                return array(
-                    'attachment_id' => $og_image['attachment_id'],
-                    'cost' => 0,
-                    'source' => 'og_image'
-                );
-            }
-            error_log('[AICG] No se pudo extraer imagen OG: ' . (is_wp_error($og_image) ? $og_image->get_error_message() : 'no disponible'));
-        }
-
-        // PASO 2: Buscar imagen de mapa SOLO si la región es prominente (aparece en múltiples titulares)
-        // Para la imagen destacada general, preferimos IA sobre un mapa aleatorio
-        if ($use_map) {
-            $region = $this->extract_prominent_region_from_headlines($headlines);
-            if ($region) {
-                error_log('[AICG] Región prominente detectada: ' . $region);
-                $map_image = $this->fetch_map_image($region);
-                if (!is_wp_error($map_image) && !empty($map_image['attachment_id'])) {
-                    error_log('[AICG] Imagen de mapa obtenida para: ' . $region);
-                    return array(
-                        'attachment_id' => $map_image['attachment_id'],
-                        'cost' => 0,
-                        'source' => 'map_image'
-                    );
-                }
-                error_log('[AICG] No se pudo obtener mapa: ' . (is_wp_error($map_image) ? $map_image->get_error_message() : 'no disponible'));
-            }
-        }
-
-        // PASO 3: Generar con IA como último recurso
-        if ($use_ai) {
-            error_log('[AICG] Generando imagen con IA');
-            return $this->generate_ai_image($headlines);
-        }
-
-        // Si ninguna fuente está habilitada o todas fallaron
-        error_log('[AICG] No hay fuentes de imagen habilitadas o todas fallaron');
-        return new WP_Error('no_image_source', __('No se pudo obtener imagen de ninguna fuente', 'ai-content-generator'));
+        // Para la imagen principal del resumen, siempre generamos con IA
+        // Las imágenes OG se usan solo para las galerías de cada tema
+        error_log('[AICG] Generando imagen con IA para el resumen principal');
+        return $this->generate_ai_image($headlines);
     }
 
     /**
@@ -2350,6 +2496,7 @@ EJEMPLO DE FORMATO:
     /**
      * Generar HTML de la galería horizontal de imágenes
      * Usa solo CSS inline para compatibilidad con WordPress (sin JavaScript)
+     * Estructura resistente a plugins de auto-linking
      *
      * @param array $images Array de imágenes
      * @param string $topic_name Nombre del tema
@@ -2364,21 +2511,27 @@ EJEMPLO DE FORMATO:
 
         ob_start();
         ?>
-        <div id="<?php echo esc_attr($gallery_id); ?>" style="margin: 15px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-            <div style="display: flex; gap: 10px; padding: 5px 0;">
-                <?php foreach ($images as $image) : ?>
-                <a href="<?php echo esc_url($image['link']); ?>" target="_blank" rel="noopener noreferrer" style="flex: 0 0 auto; text-decoration: none; display: block; width: 180px; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.1); background: #fff;">
-                    <img src="<?php echo esc_url($image['url']); ?>"
-                         alt="<?php echo esc_attr($image['title']); ?>"
-                         loading="lazy"
-                         style="width: 180px; height: 100px; object-fit: cover; display: block;">
-                    <div style="padding: 8px; background: #f9f9f9;">
-                        <span style="display: block; font-size: 11px; line-height: 1.3; color: #333; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"><?php echo esc_html(wp_trim_words($image['title'], 8)); ?></span>
+        <div id="<?php echo esc_attr($gallery_id); ?>" class="aicg-news-gallery noautotaglink" style="margin: 15px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">
+            <div style="display: flex; gap: 8px; padding: 5px 0;">
+                <?php foreach ($images as $image) :
+                    $short_title = wp_trim_words($image['title'], 6, '…');
+                ?>
+                <div class="aicg-gallery-card noautotaglink" style="flex: 0 0 auto; width: 150px; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.12); background: #fff;">
+                    <a href="<?php echo esc_url($image['link']); ?>" target="_blank" rel="noopener noreferrer" style="display: block; text-decoration: none;">
+                        <img src="<?php echo esc_url($image['url']); ?>"
+                             alt="<?php echo esc_attr($image['title']); ?>"
+                             loading="lazy"
+                             style="width: 150px; height: 85px; object-fit: cover; display: block;">
+                    </a>
+                    <div style="padding: 6px 8px; background: #f8f9fa; min-height: 42px;">
+                        <a href="<?php echo esc_url($image['link']); ?>" target="_blank" rel="noopener noreferrer" title="<?php echo esc_attr($image['title']); ?>" style="text-decoration: none; color: inherit;">
+                            <span style="display: block; font-size: 10px; line-height: 1.3; color: #333; overflow: hidden; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;"><?php echo esc_html($short_title); ?></span>
+                        </a>
                         <?php if (!empty($image['source'])) : ?>
-                        <span style="display: block; font-size: 9px; color: #666; margin-top: 2px;"><?php echo esc_html($image['source']); ?></span>
+                        <span style="display: block; font-size: 9px; color: #888; margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;"><?php echo esc_html($image['source']); ?></span>
                         <?php endif; ?>
                     </div>
-                </a>
+                </div>
                 <?php endforeach; ?>
             </div>
         </div>

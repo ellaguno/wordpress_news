@@ -439,11 +439,25 @@ class AICG_Gutenberg_Converter {
      */
     private static function div_block($node, $dom) {
         $class = $node->getAttribute('class');
+        $id = $node->getAttribute('id');
+        $style = $node->getAttribute('style');
 
         error_log('[AICG Gutenberg] Procesando DIV con clase: ' . $class);
 
         // Divs de referencias - mantener como bloque HTML simple (más compatible con Gutenberg)
         if (strpos($class, 'aicg-references') !== false) {
+            return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
+        }
+
+        // Galerías de imágenes (aicg-gallery) - mantener como bloque HTML para preservar flex layout
+        if (strpos($id, 'aicg-gallery') !== false || strpos($class, 'aicg-gallery') !== false) {
+            error_log('[AICG Gutenberg] Preservando galería de imágenes como HTML');
+            return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
+        }
+
+        // Divs con display:flex - mantener como HTML para preservar layout
+        if (strpos($style, 'display: flex') !== false || strpos($style, 'display:flex') !== false) {
+            error_log('[AICG Gutenberg] Preservando div con flex layout como HTML');
             return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
         }
 

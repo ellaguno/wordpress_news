@@ -412,6 +412,18 @@ if (!defined('ABSPATH')) {
                                     <?php esc_html_e('Ciencia:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/SCIENCE?hl=es-419&gl=MX&ceid=MX:es-419</code><br>
                                     <?php esc_html_e('Salud:', 'ai-content-generator'); ?> <code>https://news.google.com/news/rss/headlines/section/topic/HEALTH?hl=es-419&gl=MX&ceid=MX:es-419</code>
                                 </p>
+                                <p class="description" style="margin-top: 10px;">
+                                    <strong><?php esc_html_e('Feeds RSS de otras fuentes (Criptomonedas, Tecnología, etc.):', 'ai-content-generator'); ?></strong><br>
+                                    <em><?php esc_html_e('⚠️ IMPORTANTE: Debes usar URLs de feeds RSS, no páginas web normales.', 'ai-content-generator'); ?></em><br><br>
+                                    <?php esc_html_e('Cointelegraph (Cripto en español):', 'ai-content-generator'); ?> <code>https://es.cointelegraph.com/rss</code><br>
+                                    <?php esc_html_e('CoinDesk (Cripto en inglés):', 'ai-content-generator'); ?> <code>https://www.coindesk.com/arc/outboundfeeds/rss/</code><br>
+                                    <?php esc_html_e('Decrypt (Cripto en inglés):', 'ai-content-generator'); ?> <code>https://decrypt.co/feed</code><br>
+                                    <?php esc_html_e('Xataka México:', 'ai-content-generator'); ?> <code>https://www.xataka.com.mx/feed</code><br>
+                                    <?php esc_html_e('Wired (Ciencia):', 'ai-content-generator'); ?> <code>https://www.wired.com/feed/category/science/latest/rss</code><br>
+                                    <?php esc_html_e('Wired (Seguridad):', 'ai-content-generator'); ?> <code>https://www.wired.com/feed/category/security/latest/rss</code><br>
+                                    <?php esc_html_e('Ars Technica:', 'ai-content-generator'); ?> <code>https://feeds.arstechnica.com/arstechnica/index</code><br>
+                                    <?php esc_html_e('The Verge:', 'ai-content-generator'); ?> <code>https://www.theverge.com/rss/index.xml</code>
+                                </p>
                             </td>
                         </tr>
 
@@ -512,67 +524,11 @@ if (!defined('ABSPATH')) {
                                            id="aicg_news_generate_image"
                                            value="1"
                                            <?php checked(get_option('aicg_news_generate_image', false)); ?>>
-                                    <?php esc_html_e('Obtener/generar imagen para el resumen de noticias', 'ai-content-generator'); ?>
+                                    <?php esc_html_e('Generar imagen con IA para el resumen de noticias', 'ai-content-generator'); ?>
                                 </label>
                                 <p class="description">
-                                    <?php esc_html_e('La imagen se insertará al inicio del contenido del resumen (debajo del título, antes del texto).', 'ai-content-generator'); ?>
+                                    <?php esc_html_e('La imagen se generará con IA basándose en los titulares principales y se insertará al inicio del contenido (debajo del título, antes del texto). Tiene costo adicional por uso de API de generación de imágenes.', 'ai-content-generator'); ?>
                                 </p>
-                            </td>
-                        </tr>
-
-                        <tr id="aicg-image-sources-row" style="<?php echo get_option('aicg_news_generate_image', false) ? '' : 'display: none;'; ?>">
-                            <th scope="row">
-                                <label><?php esc_html_e('Fuentes de Imagen Destacada', 'ai-content-generator'); ?></label>
-                            </th>
-                            <td>
-                                <fieldset>
-                                    <legend class="screen-reader-text"><?php esc_html_e('Fuentes de imagen', 'ai-content-generator'); ?></legend>
-
-                                    <p class="description" style="margin-bottom: 10px;">
-                                        <?php esc_html_e('Selecciona las fuentes para la imagen destacada principal. Se intentarán en orden:', 'ai-content-generator'); ?>
-                                    </p>
-
-                                    <label style="display: block; margin-bottom: 8px;">
-                                        <input type="checkbox"
-                                               name="aicg_image_source_og"
-                                               id="aicg_image_source_og"
-                                               value="1"
-                                               <?php checked(get_option('aicg_image_source_og', true)); ?>>
-                                        <strong><?php esc_html_e('1. Imagen OG de fuentes', 'ai-content-generator'); ?></strong>
-                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
-                                            <?php esc_html_e('Extrae la imagen og:image o twitter:image de los artículos de noticias originales.', 'ai-content-generator'); ?>
-                                        </span>
-                                    </label>
-
-                                    <label style="display: block; margin-bottom: 8px;">
-                                        <input type="checkbox"
-                                               name="aicg_image_source_map"
-                                               id="aicg_image_source_map"
-                                               value="1"
-                                               <?php checked(get_option('aicg_image_source_map', true)); ?>>
-                                        <strong><?php esc_html_e('2. Mapa de región', 'ai-content-generator'); ?></strong>
-                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
-                                            <?php esc_html_e('Si se detecta un país/región en los titulares, busca un mapa en Wikimedia Commons.', 'ai-content-generator'); ?>
-                                        </span>
-                                    </label>
-
-                                    <label style="display: block; margin-bottom: 8px;">
-                                        <input type="checkbox"
-                                               name="aicg_image_source_ai"
-                                               id="aicg_image_source_ai"
-                                               value="1"
-                                               <?php checked(get_option('aicg_image_source_ai', true)); ?>>
-                                        <strong><?php esc_html_e('3. Generación con IA', 'ai-content-generator'); ?></strong>
-                                        <span class="description" style="display: block; margin-left: 24px; color: #666;">
-                                            <?php esc_html_e('Genera una imagen con DALL-E basada en los titulares (tiene costo adicional).', 'ai-content-generator'); ?>
-                                        </span>
-                                    </label>
-
-                                    <p class="description" style="margin-top: 10px; padding: 8px; background: #f0f6fc; border-left: 4px solid #0073aa;">
-                                        <span class="dashicons dashicons-info"></span>
-                                        <?php esc_html_e('Las fuentes se intentan en orden. Si una falla o está desactivada, se pasa a la siguiente. Si todas fallan, no se incluirá imagen.', 'ai-content-generator'); ?>
-                                    </p>
-                                </fieldset>
                             </td>
                         </tr>
 
