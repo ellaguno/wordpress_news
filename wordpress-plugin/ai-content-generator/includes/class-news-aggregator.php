@@ -2508,15 +2508,35 @@ EJEMPLO DE FORMATO:
         }
 
         $gallery_id = 'aicg-gallery-' . sanitize_title($topic_name) . '-' . uniqid();
+        $flex_container_class = 'aicg-flex-' . substr(uniqid(), -6);
+        $card_class = 'aicg-card-' . substr(uniqid(), -6);
 
         ob_start();
         ?>
+        <style>
+        #<?php echo esc_attr($gallery_id); ?> .<?php echo esc_attr($flex_container_class); ?> {
+            display: flex !important;
+            flex-direction: row !important;
+            flex-wrap: nowrap !important;
+            gap: 8px;
+            padding: 5px 0;
+        }
+        #<?php echo esc_attr($gallery_id); ?> .<?php echo esc_attr($card_class); ?> {
+            flex: 0 0 auto !important;
+            width: 150px !important;
+            min-width: 150px !important;
+            border-radius: 6px;
+            overflow: hidden;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.12);
+            background: #fff;
+        }
+        </style>
         <div id="<?php echo esc_attr($gallery_id); ?>" class="aicg-news-gallery noautotaglink" style="margin: 15px 0; overflow-x: auto; -webkit-overflow-scrolling: touch;">
-            <div style="display: flex; gap: 8px; padding: 5px 0;">
+            <div class="<?php echo esc_attr($flex_container_class); ?>">
                 <?php foreach ($images as $image) :
                     $short_title = wp_trim_words($image['title'], 6, '…');
                 ?>
-                <div class="aicg-gallery-card noautotaglink" style="flex: 0 0 auto; width: 150px; border-radius: 6px; overflow: hidden; box-shadow: 0 1px 4px rgba(0,0,0,0.12); background: #fff;">
+                <div class="aicg-gallery-card noautotaglink <?php echo esc_attr($card_class); ?>">
                     <a href="<?php echo esc_url($image['link']); ?>" target="_blank" rel="noopener noreferrer" style="display: block; text-decoration: none;">
                         <img src="<?php echo esc_url($image['url']); ?>"
                              alt="<?php echo esc_attr($image['title']); ?>"
