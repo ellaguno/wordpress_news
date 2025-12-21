@@ -16,15 +16,59 @@ if (!defined('ABSPATH')) {
 class AICG_Cron_Scheduler {
 
     /**
+     * Flag para evitar reprogramación múltiple durante el mismo request
+     *
+     * @var bool
+     */
+    private static $news_reschedule_pending = false;
+    private static $articles_reschedule_pending = false;
+
+    /**
      * Constructor
      */
     public function __construct() {
-        // Reprogramar tareas cuando se actualizan las opciones
-        add_action('update_option_aicg_schedule_articles', array($this, 'reschedule_articles'), 10, 2);
-        add_action('update_option_aicg_schedule_articles_frequency', array($this, 'reschedule_articles'), 10, 2);
-        add_action('update_option_aicg_schedule_news', array($this, 'reschedule_news'), 10, 2);
-        add_action('update_option_aicg_schedule_news_frequency', array($this, 'reschedule_news'), 10, 2);
-        add_action('update_option_aicg_schedule_news_time', array($this, 'reschedule_news'), 10, 2);
+        // Marcar para reprogramación cuando se actualizan las opciones
+        add_action('update_option_aicg_schedule_articles', array($this, 'mark_articles_for_reschedule'), 10, 2);
+        add_action('update_option_aicg_schedule_articles_frequency', array($this, 'mark_articles_for_reschedule'), 10, 2);
+        add_action('update_option_aicg_schedule_news', array($this, 'mark_news_for_reschedule'), 10, 2);
+        add_action('update_option_aicg_schedule_news_frequency', array($this, 'mark_news_for_reschedule'), 10, 2);
+        add_action('update_option_aicg_schedule_news_time', array($this, 'mark_news_for_reschedule'), 10, 2);
+
+        // Ejecutar reprogramación al final del request (después de que todas las opciones se hayan guardado)
+        add_action('shutdown', array($this, 'execute_pending_reschedules'));
+    }
+
+    /**
+     * Marcar noticias para reprogramación
+     */
+    public function mark_news_for_reschedule($old_value = null, $new_value = null) {
+        self::$news_reschedule_pending = true;
+        error_log('[AICG] Reprogramación de noticias marcada como pendiente');
+    }
+
+    /**
+     * Marcar artículos para reprogramación
+     */
+    public function mark_articles_for_reschedule($old_value = null, $new_value = null) {
+        self::$articles_reschedule_pending = true;
+        error_log('[AICG] Reprogramación de artículos marcada como pendiente');
+    }
+
+    /**
+     * Ejecutar reprogramaciones pendientes
+     */
+    public function execute_pending_reschedules() {
+        if (self::$articles_reschedule_pending) {
+            error_log('[AICG] Ejecutando reprogramación de artículos...');
+            $this->reschedule_articles();
+            self::$articles_reschedule_pending = false;
+        }
+
+        if (self::$news_reschedule_pending) {
+            error_log('[AICG] Ejecutando reprogramación de noticias...');
+            $this->reschedule_news();
+            self::$news_reschedule_pending = false;
+        }
     }
 
     /**
@@ -186,20 +230,34 @@ class AICG_Cron_Scheduler {
      * @param mixed $new_value
      */
     public function reschedule_news($old_value = null, $new_value = null) {
-        // Limpiar programación existente
+        // Limpiar TODAS las programaciones existentes (por si hay duplicados)
         wp_clear_scheduled_hook('aicg_generate_scheduled_news');
+
+        // Limpiar también cualquier evento huérfano
+        $timestamp = wp_next_scheduled('aicg_generate_scheduled_news');
+        while ($timestamp) {
+            wp_unschedule_event($timestamp, 'aicg_generate_scheduled_news');
+            $timestamp = wp_next_scheduled('aicg_generate_scheduled_news');
+        }
 
         // Si está habilitado, programar nueva tarea
         if (get_option('aicg_schedule_news', false)) {
-            $frequency = get_option('aicg_schedule_news_frequency', 'twicedaily');
+            $frequency = get_option('aicg_schedule_news_frequency', 'daily');
             $schedule_time = get_option('aicg_schedule_news_time', '08:00');
 
             // Calcular el timestamp para la próxima ejecución
             $next_run = $this->calculate_next_run_time($schedule_time, $frequency);
 
-            wp_schedule_event($next_run, $frequency, 'aicg_generate_scheduled_news');
+            // Programar el evento
+            $scheduled = wp_schedule_event($next_run, $frequency, 'aicg_generate_scheduled_news');
 
-            error_log('[AICG] Noticias programadas para: ' . date_i18n('Y-m-d H:i:s', $next_run) . ' (frecuencia: ' . $frequency . ')');
+            if ($scheduled === false) {
+                error_log('[AICG] ERROR: No se pudo programar el evento de noticias');
+            } else {
+                error_log('[AICG] Noticias programadas para: ' . date_i18n('Y-m-d H:i:s', $next_run) . ' (frecuencia: ' . $frequency . ')');
+            }
+        } else {
+            error_log('[AICG] Programación de noticias deshabilitada');
         }
     }
 

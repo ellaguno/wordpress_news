@@ -236,9 +236,10 @@ class AICG_News_Aggregator {
                 $topic_detail['news_count'] = count($news);
                 $topic_detail['status'] = 'success';
 
-                // Marcar URLs como usadas (en DB y en sesión actual)
+                // Marcar URLs y títulos como usados (en DB y en sesión actual)
                 $news_urls = array_column($news, 'link');
                 $this->mark_urls_as_used($news_urls);
+                $this->mark_titles_as_used($news);
                 $session_used_urls = array_merge($session_used_urls, $news_urls);
 
                 // Agregar noticias a la lista para extracción de imágenes OG
@@ -650,21 +651,99 @@ class AICG_News_Aggregator {
         $unique_news = array();
         $seen_titles = array();
 
+        // Obtener títulos ya usados de la base de datos
+        $used_titles = $this->get_used_titles();
+
         foreach ($news as $item) {
             // Normalizar título para comparación
-            $normalized_title = strtolower(preg_replace('/[^a-z0-9\s]/i', '', $item['title']));
-            $normalized_title = preg_replace('/\s+/', ' ', trim($normalized_title));
+            $normalized_title = $this->normalize_title($item['title']);
 
-            // Verificar si ya existe un título similar (primeras 50 caracteres)
-            $title_key = substr($normalized_title, 0, 50);
+            // Verificar si ya existe un título similar en la sesión actual
+            $is_duplicate = false;
+            foreach ($seen_titles as $seen_title) {
+                if ($this->titles_are_similar($normalized_title, $seen_title)) {
+                    $is_duplicate = true;
+                    break;
+                }
+            }
 
-            if (!isset($seen_titles[$title_key])) {
-                $seen_titles[$title_key] = true;
+            // Verificar también contra títulos de la base de datos
+            if (!$is_duplicate) {
+                foreach ($used_titles as $used_title) {
+                    if ($this->titles_are_similar($normalized_title, $used_title)) {
+                        $is_duplicate = true;
+                        error_log('[AICG] Título duplicado detectado (DB): "' . substr($item['title'], 0, 50) . '..."');
+                        break;
+                    }
+                }
+            }
+
+            if (!$is_duplicate) {
+                $seen_titles[] = $normalized_title;
                 $unique_news[] = $item;
             }
         }
 
         return $unique_news;
+    }
+
+    /**
+     * Normalizar título para comparación
+     *
+     * @param string $title
+     * @return string
+     */
+    private function normalize_title($title) {
+        // Remover caracteres especiales, convertir a minúsculas
+        $normalized = strtolower(preg_replace('/[^a-z0-9\s]/i', '', $title));
+        // Normalizar espacios
+        $normalized = preg_replace('/\s+/', ' ', trim($normalized));
+        // Remover palabras muy comunes que no aportan significado
+        $stopwords = array('el', 'la', 'los', 'las', 'un', 'una', 'de', 'del', 'en', 'y', 'a', 'que', 'por', 'para', 'con', 'se', 'su', 'es', 'al');
+        $words = explode(' ', $normalized);
+        $words = array_diff($words, $stopwords);
+        return implode(' ', $words);
+    }
+
+    /**
+     * Verificar si dos títulos son similares
+     *
+     * @param string $title1
+     * @param string $title2
+     * @return bool
+     */
+    private function titles_are_similar($title1, $title2) {
+        // Si alguno está vacío, no son similares
+        if (empty($title1) || empty($title2)) {
+            return false;
+        }
+
+        // Comparación exacta
+        if ($title1 === $title2) {
+            return true;
+        }
+
+        // Comparar primeras palabras significativas (más robusto que caracteres)
+        $words1 = explode(' ', $title1);
+        $words2 = explode(' ', $title2);
+
+        // Si tienen menos de 3 palabras, comparar directamente
+        if (count($words1) < 3 || count($words2) < 3) {
+            return $title1 === $title2;
+        }
+
+        // Contar palabras en común
+        $common_words = array_intersect($words1, $words2);
+        $min_words = min(count($words1), count($words2));
+
+        // Si más del 70% de las palabras son iguales, son similares
+        if (count($common_words) >= ($min_words * 0.7)) {
+            return true;
+        }
+
+        // Usar similar_text como respaldo (umbral del 80%)
+        similar_text($title1, $title2, $percent);
+        return $percent > 80;
     }
 
     /**
@@ -1198,6 +1277,84 @@ EJEMPLO DE FORMATO:
         dbDelta($sql);
 
         error_log('[AICG] Tabla ' . $table . ' creada/verificada');
+    }
+
+    /**
+     * Obtener títulos ya usados (normalizados)
+     *
+     * @return array
+     */
+    private function get_used_titles() {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'aicg_used_urls';
+
+        // Verificar si la tabla existe
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
+        if (!$table_exists) {
+            return array();
+        }
+
+        // Verificar si la columna title_normalized existe
+        $column_exists = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'title_normalized'");
+        if (!$column_exists) {
+            // Agregar la columna si no existe
+            $wpdb->query("ALTER TABLE $table ADD COLUMN title_normalized VARCHAR(500) DEFAULT NULL");
+            error_log('[AICG] Columna title_normalized agregada a tabla ' . $table);
+            return array();
+        }
+
+        // Títulos de los últimos 14 días (más tiempo que URLs para evitar repetición)
+        $titles = $wpdb->get_col(
+            "SELECT title_normalized FROM $table WHERE title_normalized IS NOT NULL AND used_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)"
+        );
+
+        return $titles ?: array();
+    }
+
+    /**
+     * Marcar títulos como usados
+     *
+     * @param array $news Array de noticias con 'title' y 'link'
+     */
+    private function mark_titles_as_used($news) {
+        global $wpdb;
+
+        $table = $wpdb->prefix . 'aicg_used_urls';
+
+        // Verificar/crear columna
+        $column_exists = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'title_normalized'");
+        if (!$column_exists) {
+            $wpdb->query("ALTER TABLE $table ADD COLUMN title_normalized VARCHAR(500) DEFAULT NULL");
+        }
+
+        foreach ($news as $item) {
+            if (empty($item['title'])) {
+                continue;
+            }
+
+            $normalized_title = $this->normalize_title($item['title']);
+            $url = isset($item['link']) ? $item['link'] : '';
+
+            // Actualizar el registro existente o crear uno nuevo
+            if (!empty($url)) {
+                // Si ya existe la URL, actualizar el título
+                $existing = $wpdb->get_var($wpdb->prepare(
+                    "SELECT id FROM $table WHERE url = %s",
+                    $url
+                ));
+
+                if ($existing) {
+                    $wpdb->update(
+                        $table,
+                        array('title_normalized' => $normalized_title),
+                        array('id' => $existing),
+                        array('%s'),
+                        array('%d')
+                    );
+                }
+            }
+        }
     }
 
     /**
