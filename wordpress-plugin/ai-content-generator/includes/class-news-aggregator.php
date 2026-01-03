@@ -618,6 +618,23 @@ class AICG_News_Aggregator {
             $template = $default_template;
         }
 
+        // Validar que la plantilla contenga {topic} - si no, corregir automáticamente
+        if (strpos($template, '{topic}') === false) {
+            // La plantilla no tiene el placeholder, intentar corregir
+            // Buscar patrones comunes de error: q=topic, q=tema, etc.
+            if (preg_match('/[?&]q=([^&]+)/', $template, $matches)) {
+                // Reemplazar el valor literal por {topic}
+                $template = preg_replace('/([?&]q=)[^&]+/', '$1{topic}', $template);
+                error_log('[AICG] Plantilla de búsqueda corregida automáticamente. Nueva plantilla: ' . $template);
+                // Guardar la corrección para evitar repetir el proceso
+                update_option('aicg_news_search_template', $template);
+            } else {
+                // No se pudo corregir, usar la plantilla por defecto
+                error_log('[AICG] Plantilla de búsqueda inválida, usando valor por defecto');
+                $template = $default_template;
+            }
+        }
+
         // Mejorar la búsqueda con términos más específicos según el tema
         $enhanced_topic = $this->enhance_topic_query($topic);
         error_log('[AICG] Tema "' . $topic . '" mejorado a: "' . $enhanced_topic . '"');
@@ -631,14 +648,47 @@ class AICG_News_Aggregator {
 
         error_log('[AICG] Total noticias combinadas para "' . $topic . '": ' . $count_before_relevance . ' (personalizadas: ' . (count($all_news) - count($google_news)) . ', Google: ' . count($google_news) . ')');
 
+        // Filtrar noticias antiguas (más de 48 horas)
+        $all_news = $this->filter_old_news($all_news, 48);
+        error_log('[AICG] Noticias después de filtro por fecha para "' . $topic . '": ' . count($all_news) . ' (de ' . $count_before_relevance . ')');
+
         // Filtrar noticias que no sean relevantes al tema
         $news = $this->filter_relevant_news($all_news, $topic);
-        error_log('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . $count_before_relevance . ')');
+        error_log('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . count($all_news) . ')');
 
         // Eliminar duplicados por título similar
         $news = $this->remove_duplicate_news($news);
 
         return $news;
+    }
+
+    /**
+     * Filtrar noticias antiguas basado en la fecha de publicación
+     *
+     * @param array $news Array de noticias
+     * @param int $max_hours Máximo de horas de antigüedad permitidas
+     * @return array Noticias filtradas
+     */
+    private function filter_old_news($news, $max_hours = 48) {
+        $cutoff_time = time() - ($max_hours * 3600);
+
+        return array_filter($news, function($item) use ($cutoff_time) {
+            // Si no hay fecha de publicación, incluir la noticia (beneficio de la duda)
+            if (empty($item['pubDate'])) {
+                return true;
+            }
+
+            // Intentar parsear la fecha
+            $pub_timestamp = strtotime($item['pubDate']);
+
+            // Si no se puede parsear la fecha, incluir la noticia
+            if ($pub_timestamp === false) {
+                return true;
+            }
+
+            // Solo incluir noticias más recientes que el tiempo de corte
+            return $pub_timestamp >= $cutoff_time;
+        });
     }
 
     /**
@@ -756,14 +806,18 @@ class AICG_News_Aggregator {
         // Mapeo de temas a términos de búsqueda más específicos
         $topic_mappings = array(
             'internacional' => 'noticias internacionales mundo -México -local',
+            'global' => 'noticias internacionales mundo geopolítica conflictos globales',
             'economía' => 'economía finanzas mercados PIB inflación',
             'economia' => 'economía finanzas mercados PIB inflación',
             'ciencia y tecnología' => 'ciencia tecnología innovación investigación científica',
             'ciencia' => 'descubrimiento científico investigación ciencia',
             'tecnología' => 'tecnología inteligencia artificial software hardware',
             'tecnologia' => 'tecnología inteligencia artificial software hardware',
+            'inteligencia artificial' => 'inteligencia artificial IA machine learning ChatGPT GPT OpenAI Claude deep learning',
+            'ia' => 'inteligencia artificial IA machine learning ChatGPT GPT OpenAI Claude',
             'criptomonedas' => 'bitcoin ethereum criptomonedas blockchain crypto',
             'negocios' => 'negocios empresas corporativo fusiones adquisiciones',
+            'emprendimiento' => 'emprendimiento startup emprendedor negocio inversión venture capital startups innovación empresarial',
             'conflictos y guerra' => 'guerra conflicto bélico militar ataque defensa',
             'deportes' => 'fútbol deportes liga campeón torneo',
             'entretenimiento' => 'cine películas series televisión celebridades',
@@ -771,6 +825,7 @@ class AICG_News_Aggregator {
             'medio ambiente' => 'clima cambio climático medio ambiente ecología',
             'política' => 'política gobierno elecciones congreso senado',
             'méxico' => 'México gobierno mexicano CDMX nacional',
+            'mexico' => 'México gobierno mexicano CDMX nacional',
         );
 
         $topic_lower = strtolower(trim($topic));
@@ -807,11 +862,24 @@ class AICG_News_Aggregator {
         // Palabras clave por tema para validar relevancia
         $relevance_keywords = array(
             'internacional' => array('mundo', 'internacional', 'global', 'países', 'naciones', 'extranjero', 'europa', 'asia', 'áfrica', 'estados unidos', 'rusia', 'china'),
+            'global' => array('mundo', 'internacional', 'global', 'países', 'naciones', 'geopolítica', 'europa', 'asia', 'áfrica', 'estados unidos', 'rusia', 'china', 'conflicto', 'crisis'),
             'economía' => array('economía', 'económico', 'finanzas', 'mercado', 'bolsa', 'inflación', 'pib', 'banco', 'inversión', 'dólar', 'peso'),
             'economia' => array('economía', 'económico', 'finanzas', 'mercado', 'bolsa', 'inflación', 'pib', 'banco', 'inversión', 'dólar', 'peso'),
             'ciencia y tecnología' => array('ciencia', 'tecnología', 'científico', 'investigación', 'descubrimiento', 'nasa', 'ia', 'inteligencia artificial'),
             'tecnología' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
             'tecnologia' => array('tecnología', 'tech', 'software', 'apple', 'google', 'microsoft', 'ia', 'inteligencia artificial', 'app'),
+            // Keywords para Inteligencia Artificial
+            'inteligencia artificial' => array(
+                'inteligencia artificial', 'ia', 'ai', 'machine learning', 'aprendizaje automático',
+                'chatgpt', 'gpt', 'openai', 'claude', 'anthropic', 'gemini', 'bard',
+                'deep learning', 'redes neuronales', 'neural', 'algoritmo', 'modelo de lenguaje',
+                'llm', 'generativa', 'copilot', 'midjourney', 'dall-e', 'stable diffusion',
+                'automatización', 'robot', 'robótica', 'nvidia', 'chips ia'
+            ),
+            'ia' => array(
+                'inteligencia artificial', 'ia', 'ai', 'machine learning', 'chatgpt', 'gpt',
+                'openai', 'claude', 'anthropic', 'deep learning', 'neural', 'algoritmo'
+            ),
             // Keywords ampliadas para criptomonedas
             'criptomonedas' => array(
                 'bitcoin', 'btc', 'ethereum', 'eth', 'crypto', 'cripto',
@@ -826,12 +894,21 @@ class AICG_News_Aggregator {
                 'cointelegraph', 'coindesk', 'mercado cripto'
             ),
             'negocios' => array('empresa', 'negocio', 'corporativo', 'ceo', 'fusión', 'adquisición', 'startup', 'compañía'),
+            // Keywords para Emprendimiento
+            'emprendimiento' => array(
+                'emprendimiento', 'emprendedor', 'emprendedora', 'startup', 'startups',
+                'venture capital', 'inversión', 'inversionista', 'ronda de financiamiento',
+                'aceleradora', 'incubadora', 'unicornio', 'scaleup', 'founder', 'fundador',
+                'innovación', 'innovador', 'negocio', 'pyme', 'pequeña empresa',
+                'capital semilla', 'angel investor', 'pitch', 'y combinator', 'techstars'
+            ),
             'conflictos y guerra' => array('guerra', 'conflicto', 'militar', 'ejército', 'ataque', 'bombardeo', 'tropas', 'ucrania', 'gaza', 'israel'),
             'deportes' => array('fútbol', 'futbol', 'deporte', 'liga', 'gol', 'campeón', 'campeon', 'olimpico', 'olímpico', 'nba', 'nfl', 'mundial', 'jugador', 'equipo', 'partido', 'torneo'),
             'fútbol' => array('fútbol', 'futbol', 'liga', 'gol', 'partido', 'equipo', 'campeón', 'champions', 'mundial'),
             'futbol' => array('fútbol', 'futbol', 'liga', 'gol', 'partido', 'equipo', 'campeón', 'champions', 'mundial'),
             'salud' => array('salud', 'médico', 'hospital', 'enfermedad', 'tratamiento', 'vacuna', 'covid', 'oms'),
             'méxico' => array('méxico', 'mexicano', 'cdmx', 'amlo', 'sheinbaum', 'gobierno federal'),
+            'mexico' => array('méxico', 'mexicano', 'cdmx', 'amlo', 'sheinbaum', 'gobierno federal'),
         );
 
         // Primero: Excluir noticias de deportes si NO es un tema de deportes
@@ -1032,6 +1109,7 @@ IMPORTANTE:
 - Cada párrafo debe estar en tags <p></p>
 - Usar <strong> para énfasis (NO asteriscos)
 - Extensión: 3-4 párrafos cortos
+- NUNCA uses palabras en inglés como "topic", "trending topic" o "trending". Usa equivalentes en español como "tema", "tendencia" o "tema de actualidad"
 %s
 
 Titulares a resumir:
@@ -1143,6 +1221,8 @@ REGLAS ESTRICTAS:
 3. Si citas declaraciones, mantenlas textuales
 4. No agregues información externa ni especulaciones
 5. Si hay datos contradictorios entre fuentes, menciona ambas
+6. NUNCA uses las palabras en inglés "topic", "trending topic" o "trending". Usa equivalentes en español como "tema", "tendencia" o "tema de actualidad"
+7. Si las noticias proporcionadas no son relevantes al tema solicitado, indica brevemente que no hay noticias relevantes disponibles en lugar de inventar contenido
 %s
 
 FORMATO REQUERIDO:
