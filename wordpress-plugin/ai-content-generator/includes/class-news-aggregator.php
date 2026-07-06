@@ -66,6 +66,23 @@ class AICG_News_Aggregator {
      * @return array|WP_Error
      */
     public function generate($args = array()) {
+        $result = $this->run_generation($args);
+
+        // Registrar también los fallos para que sean visibles en el historial
+        if (is_wp_error($result)) {
+            $this->log_failure($args, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Ejecutar el flujo de generación
+     *
+     * @param array $args
+     * @return array|WP_Error
+     */
+    private function run_generation($args = array()) {
         // Registrar handler para capturar errores fatales
         register_shutdown_function(function() {
             $error = error_get_last();
@@ -2948,6 +2965,10 @@ EJEMPLO DE FORMATO:
             'post_author' => $post_author
         );
 
+        // Permitir data: URIs (SVG de referencias) solo durante la inserción
+        // del contenido propio del plugin, sin debilitar KSES globalmente
+        AI_Content_Generator::add_content_filters();
+
         // Si actualizamos un post existente
         if ($existing_post_id) {
             $post_data['ID'] = $existing_post_id;
@@ -2989,6 +3010,8 @@ EJEMPLO DE FORMATO:
 
             error_log('[AICG] Created new news post ID: ' . $post_id);
         }
+
+        AI_Content_Generator::remove_content_filters();
 
         if (is_wp_error($post_id)) {
             return $post_id;
@@ -3038,9 +3061,41 @@ EJEMPLO DE FORMATO:
                 'topic' => implode(', ', $result['topics_processed']),
                 'tokens_used' => $result['tokens_used'],
                 'cost' => $result['cost'],
+                'status' => 'success',
                 'created_at' => current_time('mysql')
             ),
-            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s')
+            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s')
+        );
+    }
+
+    /**
+     * Registrar un fallo de generación en el historial
+     *
+     * @param array    $args
+     * @param WP_Error $error
+     */
+    private function log_failure($args, $error) {
+        global $wpdb;
+
+        $provider_name = is_wp_error($this->provider) ? '-' : $this->provider->get_name();
+        $model = is_wp_error($this->provider) ? '-' : $this->provider->get_default_text_model();
+        $topics = !empty($args['topics']) && is_array($args['topics']) ? implode(', ', $args['topics']) : '';
+
+        $wpdb->insert(
+            $wpdb->prefix . 'aicg_history',
+            array(
+                'type' => 'news',
+                'post_id' => 0,
+                'provider' => $provider_name,
+                'model' => $model,
+                'topic' => $topics,
+                'tokens_used' => 0,
+                'cost' => 0,
+                'status' => 'error',
+                'error_message' => $error->get_error_message(),
+                'created_at' => current_time('mysql')
+            ),
+            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s', '%s')
         );
     }
 

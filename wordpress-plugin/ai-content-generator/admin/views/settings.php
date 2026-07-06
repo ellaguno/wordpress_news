@@ -88,7 +88,8 @@ if (!defined('ABSPATH')) {
 
                         foreach ($api_keys_config as $key => $config) :
                             $option_name = 'aicg_' . $key . '_api_key';
-                            $value = get_option($option_name, '');
+                            // Nunca imprimir la clave completa en el HTML: solo la máscara
+                            $display_value = AICG_Admin_Settings::get_masked_api_key($option_name);
                         ?>
                         <tr class="aicg-api-key-row" data-provider="<?php echo esc_attr($key); ?>">
                             <th scope="row">
@@ -101,7 +102,7 @@ if (!defined('ABSPATH')) {
                                     <input type="password"
                                            name="<?php echo esc_attr($option_name); ?>"
                                            id="<?php echo esc_attr($option_name); ?>"
-                                           value="<?php echo esc_attr($value); ?>"
+                                           value="<?php echo esc_attr($display_value); ?>"
                                            class="regular-text aicg-api-key-input"
                                            autocomplete="off">
                                     <button type="button" class="button aicg-toggle-visibility" data-target="<?php echo esc_attr($option_name); ?>">
@@ -112,6 +113,11 @@ if (!defined('ABSPATH')) {
                                     </button>
                                 </div>
                                 <span class="aicg-test-result" id="test-result-<?php echo esc_attr($key); ?>"></span>
+                                <?php if ($display_value) : ?>
+                                <p class="description">
+                                    <?php esc_html_e('Por seguridad solo se muestran los últimos 4 caracteres. Pega una clave nueva para reemplazarla, o deja el campo vacío para eliminarla.', 'ai-content-generator'); ?>
+                                </p>
+                                <?php endif; ?>
                                 <p class="description">
                                     <?php echo esc_html($config['description']); ?> -
                                     <a href="<?php echo esc_url($config['url']); ?>" target="_blank">
@@ -1041,6 +1047,37 @@ if (!defined('ABSPATH')) {
                                     <?php esc_html_e('Advertencia: El contenido se publicará sin revisión previa.', 'ai-content-generator'); ?>
                                 </p>
                                 <?php endif; ?>
+                            </td>
+                        </tr>
+
+                        <tr>
+                            <th scope="row">
+                                <label for="aicg_notify_admin"><?php esc_html_e('Notificaciones por Email', 'ai-content-generator'); ?></label>
+                            </th>
+                            <td>
+                                <label>
+                                    <input type="checkbox"
+                                           name="aicg_notify_admin"
+                                           id="aicg_notify_admin"
+                                           value="1"
+                                           <?php checked(get_option('aicg_notify_admin', false)); ?>>
+                                    <?php esc_html_e('Enviar email al administrador cuando se ejecute la generación programada', 'ai-content-generator'); ?>
+                                </label>
+                                <br><br>
+                                <label>
+                                    <input type="checkbox"
+                                           name="aicg_notify_on_error_only"
+                                           id="aicg_notify_on_error_only"
+                                           value="1"
+                                           <?php checked(get_option('aicg_notify_on_error_only', false)); ?>>
+                                    <?php esc_html_e('Notificar solo cuando haya errores', 'ai-content-generator'); ?>
+                                </label>
+                                <p class="description">
+                                    <?php printf(
+                                        esc_html__('Los emails se envían a %s (email de administración del sitio).', 'ai-content-generator'),
+                                        esc_html(get_option('admin_email'))
+                                    ); ?>
+                                </p>
                             </td>
                         </tr>
 

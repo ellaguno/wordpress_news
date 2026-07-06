@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Generator
  * Plugin URI: https://github.com/sesolibre/ai-content-generator
  * Description: Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter)
- * Version: 2.8.8
+ * Version: 2.9.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Eduardo Llaguno
@@ -20,7 +20,8 @@ if (!defined('ABSPATH')) {
 }
 
 // Constantes del plugin
-define('AICG_VERSION', '2.8.8');
+define('AICG_VERSION', '2.9.0');
+define('AICG_DB_VERSION', '2');
 define('AICG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AICG_PLUGIN_URL', plugin_dir_url(__FILE__));
 define('AICG_PLUGIN_BASENAME', plugin_basename(__FILE__));
@@ -58,38 +59,57 @@ final class AI_Content_Generator {
         $this->set_locale();
         $this->define_admin_hooks();
         $this->define_cron_hooks();
-        $this->allow_data_uris();
+        $this->maybe_upgrade_database();
     }
 
     /**
-     * Permitir data URIs en el contenido (para SVGs base64)
+     * Permitir img con data: URIs en wp_kses (para los SVG de referencias).
+     *
+     * Estos filtros NO se registran globalmente: se aplican solo alrededor de
+     * la inserción de posts del propio plugin (add_content_filters /
+     * remove_content_filters), para no debilitar el filtrado KSES del resto
+     * del sitio frente a usuarios sin capacidad unfiltered_html.
      */
-    private function allow_data_uris() {
-        // Permitir data: protocol en wp_kses para imágenes SVG base64
-        add_filter('wp_kses_allowed_html', function($allowed, $context) {
-            if ($context === 'post') {
-                // Asegurar que img está permitido con src
-                if (!isset($allowed['img'])) {
-                    $allowed['img'] = array();
-                }
-                $allowed['img']['src'] = true;
-                $allowed['img']['width'] = true;
-                $allowed['img']['height'] = true;
-                $allowed['img']['alt'] = true;
-                $allowed['img']['style'] = true;
-                $allowed['img']['class'] = true;
-                $allowed['img']['aria-hidden'] = true;
+    public static function kses_allow_img_attributes($allowed, $context) {
+        if ($context === 'post') {
+            if (!isset($allowed['img'])) {
+                $allowed['img'] = array();
             }
-            return $allowed;
-        }, 10, 2);
+            $allowed['img']['src'] = true;
+            $allowed['img']['width'] = true;
+            $allowed['img']['height'] = true;
+            $allowed['img']['alt'] = true;
+            $allowed['img']['style'] = true;
+            $allowed['img']['class'] = true;
+            $allowed['img']['aria-hidden'] = true;
+        }
+        return $allowed;
+    }
 
-        // Permitir data: URIs en el protocolo
-        add_filter('kses_allowed_protocols', function($protocols) {
-            if (!in_array('data', $protocols)) {
-                $protocols[] = 'data';
-            }
-            return $protocols;
-        });
+    /**
+     * Permitir el protocolo data: en KSES (solo mientras esté activo el filtro)
+     */
+    public static function kses_allow_data_protocol($protocols) {
+        if (!in_array('data', $protocols)) {
+            $protocols[] = 'data';
+        }
+        return $protocols;
+    }
+
+    /**
+     * Activar los filtros KSES del plugin (llamar justo antes de insertar contenido propio)
+     */
+    public static function add_content_filters() {
+        add_filter('wp_kses_allowed_html', array(__CLASS__, 'kses_allow_img_attributes'), 10, 2);
+        add_filter('kses_allowed_protocols', array(__CLASS__, 'kses_allow_data_protocol'));
+    }
+
+    /**
+     * Desactivar los filtros KSES del plugin (llamar justo después de insertar)
+     */
+    public static function remove_content_filters() {
+        remove_filter('wp_kses_allowed_html', array(__CLASS__, 'kses_allow_img_attributes'), 10);
+        remove_filter('kses_allowed_protocols', array(__CLASS__, 'kses_allow_data_protocol'));
     }
 
     /**
@@ -154,6 +174,9 @@ final class AI_Content_Generator {
             add_action('wp_ajax_aicg_generate_article', array($admin_dashboard, 'ajax_generate_article'));
             add_action('wp_ajax_aicg_generate_news', array($admin_dashboard, 'ajax_generate_news'));
             add_action('wp_ajax_aicg_test_provider', array($admin_settings, 'ajax_test_provider'));
+
+            // Limpiar errores de cron desde el dashboard
+            add_action('admin_post_aicg_clear_cron_errors', array($admin_dashboard, 'handle_clear_cron_errors'));
         }
     }
 
@@ -243,12 +266,22 @@ final class AI_Content_Generator {
             }
         }
 
-        // Crear tabla para historial
+        // Crear/actualizar tablas
+        self::create_tables();
+        update_option('aicg_db_version', AICG_DB_VERSION);
+
+        flush_rewrite_rules();
+    }
+
+    /**
+     * Crear o actualizar las tablas del plugin (dbDelta añade columnas faltantes)
+     */
+    public static function create_tables() {
         global $wpdb;
         $charset_collate = $wpdb->get_charset_collate();
         $table_name = $wpdb->prefix . 'aicg_history';
 
-        $sql = "CREATE TABLE IF NOT EXISTS $table_name (
+        $sql = "CREATE TABLE $table_name (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             type varchar(20) NOT NULL,
             post_id bigint(20) DEFAULT NULL,
@@ -257,8 +290,10 @@ final class AI_Content_Generator {
             topic varchar(255) NOT NULL,
             tokens_used int(11) DEFAULT 0,
             cost decimal(10,6) DEFAULT 0,
+            status varchar(20) NOT NULL DEFAULT 'success',
+            error_message text,
             created_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             KEY type (type),
             KEY post_id (post_id)
         ) $charset_collate;";
@@ -266,19 +301,31 @@ final class AI_Content_Generator {
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql);
 
-        // Crear tabla para URLs de noticias usadas
+        // Tabla para URLs de noticias usadas
         $urls_table = $wpdb->prefix . 'aicg_used_urls';
-        $sql_urls = "CREATE TABLE IF NOT EXISTS $urls_table (
+        $sql_urls = "CREATE TABLE $urls_table (
             id bigint(20) NOT NULL AUTO_INCREMENT,
             url varchar(500) NOT NULL,
             used_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
+            PRIMARY KEY  (id),
             UNIQUE KEY url (url(255))
         ) $charset_collate;";
 
         dbDelta($sql_urls);
+    }
 
-        flush_rewrite_rules();
+    /**
+     * Migrar el esquema de BD al actualizar el plugin sin reactivarlo.
+     *
+     * Se ejecuta en la carga del plugin (no solo en admin) para que el
+     * esquema esté al día también cuando la primera ejecución tras la
+     * actualización es una tarea de cron.
+     */
+    private function maybe_upgrade_database() {
+        if (get_option('aicg_db_version') !== AICG_DB_VERSION) {
+            self::create_tables();
+            update_option('aicg_db_version', AICG_DB_VERSION);
+        }
     }
 
     /**

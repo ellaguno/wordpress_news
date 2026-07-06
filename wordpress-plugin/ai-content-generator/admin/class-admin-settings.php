@@ -113,14 +113,17 @@ class AICG_Admin_Settings {
         );
 
         foreach ($api_keys as $key => $name) {
-            register_setting('aicg-settings', 'aicg_' . $key . '_api_key', array(
+            $option_name = 'aicg_' . $key . '_api_key';
+            register_setting('aicg-settings', $option_name, array(
                 'type' => 'string',
-                'sanitize_callback' => 'sanitize_text_field',
+                'sanitize_callback' => function($value) use ($option_name) {
+                    return AICG_Admin_Settings::sanitize_api_key($value, $option_name);
+                },
                 'default' => ''
             ));
 
             add_settings_field(
-                'aicg_' . $key . '_api_key',
+                $option_name,
                 sprintf(__('API Key %s', 'ai-content-generator'), $name),
                 array($this, 'render_api_key_field'),
                 'aicg-settings',
@@ -471,6 +474,19 @@ class AICG_Admin_Settings {
             'default' => 0
         ));
 
+        // Notificaciones por email de la generación programada
+        register_setting('aicg-settings', 'aicg_notify_admin', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => false
+        ));
+
+        register_setting('aicg-settings', 'aicg_notify_on_error_only', array(
+            'type' => 'boolean',
+            'sanitize_callback' => 'rest_sanitize_boolean',
+            'default' => false
+        ));
+
         add_settings_field(
             'aicg_schedule_news',
             __('Noticias Programadas', 'ai-content-generator'),
@@ -478,6 +494,50 @@ class AICG_Admin_Settings {
             'aicg-settings',
             'aicg_schedule_section'
         );
+    }
+
+    /**
+     * Versión enmascarada de una API key para mostrar en la UI.
+     *
+     * Longitud fija de asteriscos para no revelar la longitud real de la clave.
+     *
+     * @param string $option_name Nombre de la opción (aicg_*_api_key)
+     * @return string
+     */
+    public static function get_masked_api_key($option_name) {
+        $value = get_option($option_name, '');
+
+        if (empty($value)) {
+            return '';
+        }
+
+        $suffix = strlen($value) > 8 ? substr($value, -4) : '';
+        return str_repeat('*', 12) . $suffix;
+    }
+
+    /**
+     * Sanitizar API key con patrón write-only: si el valor recibido es la
+     * máscara (el usuario no lo tocó), se conserva la clave guardada. La clave
+     * completa nunca vuelve a imprimirse en el HTML.
+     *
+     * @param string $value       Valor enviado en el formulario
+     * @param string $option_name Nombre de la opción
+     * @return string
+     */
+    public static function sanitize_api_key($value, $option_name) {
+        $value = trim((string) $value);
+
+        // Campo vacío = borrar la clave
+        if ($value === '') {
+            return '';
+        }
+
+        // Si empieza con asteriscos es la máscara sin editar: conservar la clave actual
+        if (strpos($value, '****') === 0) {
+            return get_option($option_name, '');
+        }
+
+        return sanitize_text_field($value);
     }
 
     /**

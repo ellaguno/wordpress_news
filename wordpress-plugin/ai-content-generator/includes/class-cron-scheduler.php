@@ -387,6 +387,22 @@ class AICG_Cron_Scheduler {
         // Mantener solo los últimos 10 errores
         $errors = array_slice($errors, -10);
         update_option('aicg_cron_errors', $errors);
+
+        // Notificar el fallo por email si está habilitado
+        if (get_option('aicg_notify_admin', false)) {
+            $subject = sprintf(
+                __('[%s] Error en la generación automática de contenido', 'ai-content-generator'),
+                get_bloginfo('name')
+            );
+            $body = sprintf(
+                __("Falló una tarea programada del plugin AI Content Generator.\n\nTipo: %s\nError: %s\nFecha: %s\n\nRevisa el dashboard del plugin: %s", 'ai-content-generator'),
+                $type === 'article' ? __('Artículo', 'ai-content-generator') : __('Noticias', 'ai-content-generator'),
+                $message,
+                current_time('mysql'),
+                admin_url('admin.php?page=aicg-dashboard')
+            );
+            wp_mail(get_option('admin_email'), $subject, $body);
+        }
     }
 
     /**
@@ -412,6 +428,11 @@ class AICG_Cron_Scheduler {
     private function maybe_notify_admin($type, $result) {
         // Verificar si las notificaciones están habilitadas
         if (!get_option('aicg_notify_admin', false)) {
+            return;
+        }
+
+        // Si el usuario solo quiere enterarse de los fallos, no notificar éxitos
+        if (get_option('aicg_notify_on_error_only', false)) {
             return;
         }
 

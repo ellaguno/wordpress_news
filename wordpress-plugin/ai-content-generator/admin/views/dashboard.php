@@ -15,8 +15,8 @@ global $wpdb;
 $table_history = $wpdb->prefix . 'aicg_history';
 
 $stats = array(
-    'total_articles' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'article'"),
-    'total_news' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'news'"),
+    'total_articles' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'article' AND status = 'success'"),
+    'total_news' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'news' AND status = 'success'"),
     'total_tokens' => $wpdb->get_var("SELECT SUM(tokens_used) FROM $table_history"),
     'total_cost' => $wpdb->get_var("SELECT SUM(cost) FROM $table_history"),
     'last_7_days' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
@@ -44,6 +44,32 @@ $is_configured = !empty(get_option($api_key_option, ''));
                 '<a href="' . admin_url('admin.php?page=aicg-settings') . '">',
                 '</a>'
             ); ?>
+        </p>
+    </div>
+    <?php endif; ?>
+
+    <?php
+    // Errores recientes de las tareas programadas
+    $cron_errors = get_option('aicg_cron_errors', array());
+    if (!empty($cron_errors)) :
+    ?>
+    <div class="notice notice-error">
+        <p>
+            <strong><?php esc_html_e('Errores recientes de la generación programada:', 'ai-content-generator'); ?></strong>
+        </p>
+        <ul style="list-style: disc; margin-left: 20px;">
+            <?php foreach (array_reverse(array_slice($cron_errors, -5)) as $error) : ?>
+                <li>
+                    <code><?php echo esc_html($error['time']); ?></code>
+                    [<?php echo esc_html($error['type'] === 'article' ? __('Artículo', 'ai-content-generator') : __('Noticias', 'ai-content-generator')); ?>]
+                    <?php echo esc_html($error['message']); ?>
+                </li>
+            <?php endforeach; ?>
+        </ul>
+        <p>
+            <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aicg_clear_cron_errors'), 'aicg_clear_cron_errors')); ?>" class="button">
+                <?php esc_html_e('Limpiar errores', 'ai-content-generator'); ?>
+            </a>
         </p>
     </div>
     <?php endif; ?>

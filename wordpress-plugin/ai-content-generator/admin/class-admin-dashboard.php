@@ -192,6 +192,23 @@ class AICG_Admin_Dashboard {
     }
 
     /**
+     * Limpiar el registro de errores de cron desde el dashboard
+     */
+    public function handle_clear_cron_errors() {
+        check_admin_referer('aicg_clear_cron_errors');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Sin permisos suficientes', 'ai-content-generator'));
+        }
+
+        delete_option('aicg_cron_errors');
+
+        $referer = wp_get_referer();
+        wp_safe_redirect($referer ? $referer : admin_url('admin.php?page=aicg-dashboard'));
+        exit;
+    }
+
+    /**
      * AJAX: Probar conexión con proveedor
      */
     public function ajax_test_provider() {

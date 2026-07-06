@@ -52,6 +52,23 @@ class AICG_Article_Generator {
      * @return array|WP_Error Resultado con post_id, o WP_Error
      */
     public function generate($args = array()) {
+        $result = $this->run_generation($args);
+
+        // Registrar también los fallos para que sean visibles en el historial
+        if (is_wp_error($result)) {
+            $this->log_failure($args, $result);
+        }
+
+        return $result;
+    }
+
+    /**
+     * Ejecutar el flujo de generación
+     *
+     * @param array $args
+     * @return array|WP_Error
+     */
+    private function run_generation($args = array()) {
         $defaults = array(
             'topic' => '',
             'category_id' => 0,
@@ -456,9 +473,40 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
                 'topic' => $args['topic'],
                 'tokens_used' => $result['tokens_used'],
                 'cost' => $result['cost'],
+                'status' => 'success',
                 'created_at' => current_time('mysql')
             ),
-            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s')
+            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s')
+        );
+    }
+
+    /**
+     * Registrar un fallo de generación en el historial
+     *
+     * @param array    $args
+     * @param WP_Error $error
+     */
+    private function log_failure($args, $error) {
+        global $wpdb;
+
+        $provider_name = is_wp_error($this->provider) ? '-' : $this->provider->get_name();
+        $model = is_wp_error($this->provider) ? '-' : $this->provider->get_default_text_model();
+
+        $wpdb->insert(
+            $wpdb->prefix . 'aicg_history',
+            array(
+                'type' => 'article',
+                'post_id' => 0,
+                'provider' => $provider_name,
+                'model' => $model,
+                'topic' => isset($args['topic']) ? (string) $args['topic'] : '',
+                'tokens_used' => 0,
+                'cost' => 0,
+                'status' => 'error',
+                'error_message' => $error->get_error_message(),
+                'created_at' => current_time('mysql')
+            ),
+            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s', '%s', '%s')
         );
     }
 }

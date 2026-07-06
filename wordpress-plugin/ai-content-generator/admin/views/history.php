@@ -21,6 +21,7 @@ $offset = ($current_page - 1) * $per_page;
 // Filtros
 $type_filter = isset($_GET['type']) ? sanitize_text_field($_GET['type']) : '';
 $provider_filter = isset($_GET['provider']) ? sanitize_text_field($_GET['provider']) : '';
+$status_filter = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : '';
 
 // Construir query
 $where = array('1=1');
@@ -34,6 +35,11 @@ if ($type_filter) {
 if ($provider_filter) {
     $where[] = 'provider = %s';
     $params[] = $provider_filter;
+}
+
+if ($status_filter) {
+    $where[] = 'status = %s';
+    $params[] = $status_filter;
 }
 
 $where_clause = implode(' AND ', $where);
@@ -54,8 +60,8 @@ $stats = $wpdb->get_row("
     SELECT
         SUM(tokens_used) as total_tokens,
         SUM(cost) as total_cost,
-        COUNT(CASE WHEN type = 'article' THEN 1 END) as articles,
-        COUNT(CASE WHEN type = 'news' THEN 1 END) as news
+        COUNT(CASE WHEN type = 'article' AND status = 'success' THEN 1 END) as articles,
+        COUNT(CASE WHEN type = 'news' AND status = 'success' THEN 1 END) as news
     FROM $table_name
 ");
 ?>
@@ -105,9 +111,15 @@ $stats = $wpdb->get_row("
                 <option value="openrouter" <?php selected($provider_filter, 'openrouter'); ?>>OpenRouter</option>
             </select>
 
+            <select name="status">
+                <option value=""><?php esc_html_e('Todos los estados', 'ai-content-generator'); ?></option>
+                <option value="success" <?php selected($status_filter, 'success'); ?>><?php esc_html_e('Éxito', 'ai-content-generator'); ?></option>
+                <option value="error" <?php selected($status_filter, 'error'); ?>><?php esc_html_e('Error', 'ai-content-generator'); ?></option>
+            </select>
+
             <button type="submit" class="button"><?php esc_html_e('Filtrar', 'ai-content-generator'); ?></button>
 
-            <?php if ($type_filter || $provider_filter) : ?>
+            <?php if ($type_filter || $provider_filter || $status_filter) : ?>
                 <a href="<?php echo admin_url('admin.php?page=aicg-history'); ?>" class="button">
                     <?php esc_html_e('Limpiar filtros', 'ai-content-generator'); ?>
                 </a>
@@ -126,6 +138,7 @@ $stats = $wpdb->get_row("
                 <tr>
                     <th class="column-date"><?php esc_html_e('Fecha', 'ai-content-generator'); ?></th>
                     <th class="column-type"><?php esc_html_e('Tipo', 'ai-content-generator'); ?></th>
+                    <th class="column-status"><?php esc_html_e('Estado', 'ai-content-generator'); ?></th>
                     <th class="column-topic"><?php esc_html_e('Tema', 'ai-content-generator'); ?></th>
                     <th class="column-provider"><?php esc_html_e('Proveedor', 'ai-content-generator'); ?></th>
                     <th class="column-model"><?php esc_html_e('Modelo', 'ai-content-generator'); ?></th>
@@ -156,8 +169,27 @@ $stats = $wpdb->get_row("
                             </span>
                         <?php endif; ?>
                     </td>
+                    <td class="column-status">
+                        <?php
+                        $item_status = isset($item->status) ? $item->status : 'success';
+                        if ($item_status === 'error') :
+                        ?>
+                            <span class="aicg-status-error" title="<?php echo esc_attr(isset($item->error_message) ? $item->error_message : ''); ?>">
+                                <span class="dashicons dashicons-warning"></span>
+                                <?php esc_html_e('Error', 'ai-content-generator'); ?>
+                            </span>
+                        <?php else : ?>
+                            <span class="aicg-status-ok">
+                                <span class="dashicons dashicons-yes-alt"></span>
+                                <?php esc_html_e('Éxito', 'ai-content-generator'); ?>
+                            </span>
+                        <?php endif; ?>
+                    </td>
                     <td class="column-topic">
                         <strong><?php echo esc_html(wp_trim_words($item->topic, 8)); ?></strong>
+                        <?php if ($item_status === 'error' && !empty($item->error_message)) : ?>
+                            <br><small style="color: #d63638;"><?php echo esc_html(wp_trim_words($item->error_message, 15)); ?></small>
+                        <?php endif; ?>
                     </td>
                     <td class="column-provider">
                         <code><?php echo esc_html($item->provider); ?></code>
@@ -172,13 +204,19 @@ $stats = $wpdb->get_row("
                         $<?php echo number_format($item->cost, 4); ?>
                     </td>
                     <td class="column-actions">
-                        <?php if ($item->post_id) : ?>
+                        <?php if ($item->post_id && get_post($item->post_id)) : ?>
                             <a href="<?php echo get_permalink($item->post_id); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Ver', 'ai-content-generator'); ?>">
                                 <span class="dashicons dashicons-visibility"></span>
+                                <span class="screen-reader-text"><?php esc_html_e('Ver post', 'ai-content-generator'); ?></span>
                             </a>
                             <a href="<?php echo get_edit_post_link($item->post_id); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Editar', 'ai-content-generator'); ?>">
                                 <span class="dashicons dashicons-edit"></span>
+                                <span class="screen-reader-text"><?php esc_html_e('Editar post', 'ai-content-generator'); ?></span>
                             </a>
+                        <?php elseif ($item->post_id) : ?>
+                            <span class="aicg-no-post" title="<?php esc_attr_e('El post fue eliminado', 'ai-content-generator'); ?>">
+                                <?php esc_html_e('(post eliminado)', 'ai-content-generator'); ?>
+                            </span>
                         <?php else : ?>
                             <span class="aicg-no-post">-</span>
                         <?php endif; ?>
@@ -203,6 +241,7 @@ $stats = $wpdb->get_row("
                     $base_url = admin_url('admin.php?page=aicg-history');
                     if ($type_filter) $base_url .= '&type=' . $type_filter;
                     if ($provider_filter) $base_url .= '&provider=' . $provider_filter;
+                    if ($status_filter) $base_url .= '&status=' . $status_filter;
 
                     if ($current_page > 1) : ?>
                         <a class="first-page button" href="<?php echo esc_url($base_url . '&paged=1'); ?>">
