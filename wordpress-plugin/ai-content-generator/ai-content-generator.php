@@ -117,6 +117,7 @@ final class AI_Content_Generator {
      */
     private function load_dependencies() {
         // Clases base
+        require_once AICG_PLUGIN_DIR . 'includes/class-logger.php';
         require_once AICG_PLUGIN_DIR . 'includes/class-ai-provider-interface.php';
         require_once AICG_PLUGIN_DIR . 'includes/class-ai-provider-factory.php';
 
@@ -206,23 +207,29 @@ final class AI_Content_Generator {
     }
 
     /**
-     * Activación del plugin
+     * Valores por defecto de las opciones del plugin.
+     *
+     * Fuente única de verdad: la usan activate() y puede consultarse desde
+     * cualquier parte para no duplicar defaults (antes divergían entre
+     * activate, register_setting y las vistas).
+     *
+     * @return array
      */
-    public static function activate() {
-        // Crear opciones por defecto
-        $default_options = array(
+    public static function get_default_options() {
+        return array(
             'aicg_ai_provider' => 'openai',
             'aicg_openai_api_key' => '',
             'aicg_anthropic_api_key' => '',
             'aicg_deepseek_api_key' => '',
             'aicg_openrouter_api_key' => '',
             'aicg_default_model' => 'gpt-4o',
+            'aicg_image_provider' => 'openai',
             'aicg_image_model' => 'dall-e-3',
             'aicg_article_min_words' => 1500,
             'aicg_article_max_words' => 2000,
             'aicg_article_sections' => 4,
             'aicg_watermark_enabled' => false,
-            'aicg_watermark_image' => '',
+            'aicg_watermark_image' => 0,
             'aicg_article_topics' => array(
                 'Tecnología e Innovación',
                 'Ciencia y Descubrimientos',
@@ -238,16 +245,29 @@ final class AI_Content_Generator {
             'aicg_schedule_articles' => false,
             'aicg_schedule_articles_frequency' => 'daily',
             'aicg_schedule_news' => false,
-            'aicg_schedule_news_frequency' => 'daily',
+            'aicg_schedule_news_frequency' => 'twicedaily',
+            'aicg_schedule_news_time' => '08:00',
+            'aicg_schedule_post_status' => 'draft',
+            'aicg_default_author' => 0,
+            'aicg_notify_admin' => false,
+            'aicg_notify_on_error_only' => false,
             'aicg_content_format' => 'gutenberg',
             'aicg_news_post_type' => 'post',
-            'aicg_reference_style' => 'circle',
+            'aicg_reference_style' => 'inline',
             'aicg_reference_color' => '#0073aa',
             'aicg_reference_orientation' => 'horizontal',
-            'aicg_image_size' => '1792x1024'
+            'aicg_reference_size' => 24,
+            'aicg_image_size' => '1792x1024',
+            'aicg_image_quality' => 'standard'
         );
+    }
 
-        foreach ($default_options as $key => $value) {
+    /**
+     * Activación del plugin
+     */
+    public static function activate() {
+        // Crear opciones por defecto (solo las que no existan)
+        foreach (self::get_default_options() as $key => $value) {
             if (get_option($key) === false) {
                 add_option($key, $value);
             }
@@ -339,23 +359,6 @@ final class AI_Content_Generator {
         flush_rewrite_rules();
     }
 
-    /**
-     * Desinstalación del plugin
-     */
-    public static function uninstall() {
-        // Solo ejecutar si se confirma desinstalación
-        if (!defined('WP_UNINSTALL_PLUGIN')) {
-            exit;
-        }
-
-        // Eliminar opciones
-        global $wpdb;
-        $wpdb->query("DELETE FROM {$wpdb->options} WHERE option_name LIKE 'aicg_%'");
-
-        // Eliminar tablas
-        $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}aicg_history");
-        $wpdb->query("DROP TABLE IF EXISTS {$wpdb->prefix}aicg_used_urls");
-    }
 }
 
 // Hooks de activación/desactivación

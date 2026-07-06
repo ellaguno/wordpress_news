@@ -43,7 +43,7 @@ class AICG_Cron_Scheduler {
      */
     public function mark_news_for_reschedule($old_value = null, $new_value = null) {
         self::$news_reschedule_pending = true;
-        error_log('[AICG] Reprogramación de noticias marcada como pendiente');
+        AICG_Logger::debug('[AICG] Reprogramación de noticias marcada como pendiente');
     }
 
     /**
@@ -51,7 +51,7 @@ class AICG_Cron_Scheduler {
      */
     public function mark_articles_for_reschedule($old_value = null, $new_value = null) {
         self::$articles_reschedule_pending = true;
-        error_log('[AICG] Reprogramación de artículos marcada como pendiente');
+        AICG_Logger::debug('[AICG] Reprogramación de artículos marcada como pendiente');
     }
 
     /**
@@ -59,13 +59,13 @@ class AICG_Cron_Scheduler {
      */
     public function execute_pending_reschedules() {
         if (self::$articles_reschedule_pending) {
-            error_log('[AICG] Ejecutando reprogramación de artículos...');
+            AICG_Logger::debug('[AICG] Ejecutando reprogramación de artículos...');
             $this->reschedule_articles();
             self::$articles_reschedule_pending = false;
         }
 
         if (self::$news_reschedule_pending) {
-            error_log('[AICG] Ejecutando reprogramación de noticias...');
+            AICG_Logger::debug('[AICG] Ejecutando reprogramación de noticias...');
             $this->reschedule_news();
             self::$news_reschedule_pending = false;
         }
@@ -302,12 +302,12 @@ class AICG_Cron_Scheduler {
             $scheduled = wp_schedule_event($next_run, $frequency, 'aicg_generate_scheduled_news');
 
             if ($scheduled === false) {
-                error_log('[AICG] ERROR: No se pudo programar el evento de noticias');
+                AICG_Logger::debug('[AICG] ERROR: No se pudo programar el evento de noticias');
             } else {
-                error_log('[AICG] Noticias programadas para: ' . date_i18n('Y-m-d H:i:s', $next_run) . ' (frecuencia: ' . $frequency . ')');
+                AICG_Logger::debug('[AICG] Noticias programadas para: ' . date_i18n('Y-m-d H:i:s', $next_run) . ' (frecuencia: ' . $frequency . ')');
             }
         } else {
-            error_log('[AICG] Programación de noticias deshabilitada');
+            AICG_Logger::debug('[AICG] Programación de noticias deshabilitada');
         }
     }
 
@@ -352,13 +352,13 @@ class AICG_Cron_Scheduler {
         $timestamp = $scheduled->getTimestamp();
 
         // Log para debug
-        error_log('[AICG] === Cálculo de próxima ejecución ===');
-        error_log('[AICG] Hora configurada: ' . $time);
-        error_log('[AICG] Zona horaria WP: ' . $timezone->getName());
-        error_log('[AICG] Ahora (local): ' . $now->format('Y-m-d H:i:s'));
-        error_log('[AICG] Programado (local): ' . $scheduled->format('Y-m-d H:i:s'));
-        error_log('[AICG] Timestamp UTC: ' . $timestamp);
-        error_log('[AICG] Verificación con date_i18n: ' . date_i18n('Y-m-d H:i:s', $timestamp));
+        AICG_Logger::debug('[AICG] === Cálculo de próxima ejecución ===');
+        AICG_Logger::debug('[AICG] Hora configurada: ' . $time);
+        AICG_Logger::debug('[AICG] Zona horaria WP: ' . $timezone->getName());
+        AICG_Logger::debug('[AICG] Ahora (local): ' . $now->format('Y-m-d H:i:s'));
+        AICG_Logger::debug('[AICG] Programado (local): ' . $scheduled->format('Y-m-d H:i:s'));
+        AICG_Logger::debug('[AICG] Timestamp UTC: ' . $timestamp);
+        AICG_Logger::debug('[AICG] Verificación con date_i18n: ' . date_i18n('Y-m-d H:i:s', $timestamp));
 
         return $timestamp;
     }
@@ -370,7 +370,8 @@ class AICG_Cron_Scheduler {
      * @param string $message
      */
     private function log_error($type, $message) {
-        error_log(sprintf(
+        // Los errores de tareas programadas se registran siempre, no solo en debug
+        AICG_Logger::error(sprintf(
             '[AI Content Generator] Error en tarea programada (%s): %s',
             $type,
             $message
@@ -412,7 +413,7 @@ class AICG_Cron_Scheduler {
      * @param string $message
      */
     private function log_success($type, $message) {
-        error_log(sprintf(
+        AICG_Logger::debug(sprintf(
             '[AI Content Generator] Tarea programada exitosa (%s): %s',
             $type,
             $message

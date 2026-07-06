@@ -2,9 +2,9 @@
 Contributors: ellaguno
 Tags: ai, content, generator, openai, anthropic, deepseek, openrouter, articles, news
 Requires at least: 5.8
-Tested up to: 6.4
+Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 2.9.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -107,6 +107,24 @@ Sí, el plugin genera HTML estándar compatible con cualquier tema.
 
 == Changelog ==
 
+= 2.9.0 =
+* Seguridad: filtros KSES (data: URIs) acotados al contenido del plugin, ya no se debilitan globalmente
+* Seguridad: las API keys ya no se imprimen completas en el HTML (patrón write-only con máscara)
+* Errores de la generación programada visibles en el Dashboard, con botón para limpiarlos
+* Notificaciones por email de la generación programada (con modo "solo errores")
+* El historial registra también los fallos (columna de estado y mensaje de error) y permite filtrarlos
+* Logging de depuración condicionado a WP_DEBUG; los volcados de respuestas se truncan
+* Eliminadas ~900 líneas de código muerto (regiones/mapas de Wikimedia, REST no registrado, Settings API duplicada)
+* Defaults de opciones centralizados (corrige divergencias entre activación y configuración)
+
+= 2.8.8 =
+* El selector de autor se respeta al generar artículos y noticias
+* El modelo de texto configurado lo respetan los 4 proveedores; el historial registra el modelo real
+* Corregido fatal error potencial al crear categorías desde cron
+* Los fallos de wp_insert_post ya no pasan en silencio
+* Lock contra ejecuciones de cron solapadas (evita posts y gasto duplicados)
+* Anti-SSRF: validación de destinos y wp_safe_remote_get en feeds, og:image y descargas de imágenes
+
 = 1.0.0 =
 * Versión inicial
 * Soporte para OpenAI, Anthropic, DeepSeek y OpenRouter
@@ -117,14 +135,14 @@ Sí, el plugin genera HTML estándar compatible con cualquier tema.
 
 == Upgrade Notice ==
 
-= 1.0.0 =
-Primera versión estable del plugin.
+= 2.9.0 =
+Mejoras de seguridad (KSES acotado, API keys enmascaradas) y visibilidad de errores de la generación automática. La tabla de historial se migra automáticamente.
 
 == Privacy Policy ==
 
 Este plugin envía datos a APIs externas de IA (OpenAI, Anthropic, DeepSeek, OpenRouter) según el proveedor configurado. Los prompts y contenido generado son procesados por estos servicios. Consulta las políticas de privacidad de cada proveedor.
 
 El plugin almacena localmente:
-* Configuración y API Keys (cifradas en la base de datos)
+* Configuración y API Keys (en la tabla de opciones de WordPress; protege el acceso a tu base de datos)
 * Historial de generaciones
 * URLs de noticias usadas

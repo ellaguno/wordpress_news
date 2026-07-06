@@ -28,7 +28,7 @@ class AICG_Gutenberg_Converter {
             return '';
         }
 
-        error_log('[AICG Gutenberg] Iniciando conversión. HTML length: ' . strlen($html));
+        AICG_Logger::debug('[AICG Gutenberg] Iniciando conversión. HTML length: ' . strlen($html));
 
         $blocks = array();
 
@@ -48,9 +48,9 @@ class AICG_Gutenberg_Converter {
 
         $errors = libxml_get_errors();
         if (!empty($errors)) {
-            error_log('[AICG Gutenberg] Errores XML: ' . count($errors));
+            AICG_Logger::debug('[AICG Gutenberg] Errores XML: ' . count($errors));
             foreach (array_slice($errors, 0, 3) as $error) {
-                error_log('[AICG Gutenberg] Error: ' . trim($error->message));
+                AICG_Logger::debug('[AICG Gutenberg] Error: ' . trim($error->message));
             }
         }
         libxml_clear_errors();
@@ -70,7 +70,7 @@ class AICG_Gutenberg_Converter {
         }
 
         if (!$root) {
-            error_log('[AICG Gutenberg] No se encontró root, usando body o documentElement');
+            AICG_Logger::debug('[AICG Gutenberg] No se encontró root, usando body o documentElement');
             $root = $dom->getElementsByTagName('body')->item(0);
             if (!$root) {
                 $root = $dom->documentElement;
@@ -78,11 +78,11 @@ class AICG_Gutenberg_Converter {
         }
 
         if (!$root) {
-            error_log('[AICG Gutenberg] No se pudo parsear HTML, devolviendo como bloque HTML');
+            AICG_Logger::debug('[AICG Gutenberg] No se pudo parsear HTML, devolviendo como bloque HTML');
             return self::wrap_as_html_block($html);
         }
 
-        error_log('[AICG Gutenberg] Root encontrado con ' . $root->childNodes->length . ' hijos');
+        AICG_Logger::debug('[AICG Gutenberg] Root encontrado con ' . $root->childNodes->length . ' hijos');
 
         // Procesar nodos hijos del root
         foreach ($root->childNodes as $node) {
@@ -93,7 +93,7 @@ class AICG_Gutenberg_Converter {
         }
 
         if (empty($blocks)) {
-            error_log('[AICG Gutenberg] No se generaron bloques, devolviendo HTML como bloque');
+            AICG_Logger::debug('[AICG Gutenberg] No se generaron bloques, devolviendo HTML como bloque');
             return self::wrap_as_html_block($html);
         }
 
@@ -103,8 +103,8 @@ class AICG_Gutenberg_Converter {
         // Limpiar espacios al inicio
         $result = ltrim($result);
 
-        error_log('[AICG Gutenberg] Conversión completada. Bloques: ' . count($blocks));
-        error_log('[AICG Gutenberg] Primer bloque: ' . substr($blocks[0], 0, 100));
+        AICG_Logger::debug('[AICG Gutenberg] Conversión completada. Bloques: ' . count($blocks));
+        AICG_Logger::debug('[AICG Gutenberg] Primer bloque: ' . substr($blocks[0], 0, 100));
 
         return $result;
     }
@@ -140,7 +140,7 @@ class AICG_Gutenberg_Converter {
         $tag = strtolower($node->nodeName);
         $innerHTML = self::get_inner_html($node, $dom);
 
-        error_log('[AICG Gutenberg] Procesando tag: ' . $tag);
+        AICG_Logger::debug('[AICG Gutenberg] Procesando tag: ' . $tag);
 
         switch ($tag) {
             case 'p':
@@ -442,7 +442,7 @@ class AICG_Gutenberg_Converter {
         $id = $node->getAttribute('id');
         $style = $node->getAttribute('style');
 
-        error_log('[AICG Gutenberg] Procesando DIV con clase: ' . $class);
+        AICG_Logger::debug('[AICG Gutenberg] Procesando DIV con clase: ' . $class);
 
         // Divs de referencias - mantener como bloque HTML simple (más compatible con Gutenberg)
         if (strpos($class, 'aicg-references') !== false) {
@@ -451,13 +451,13 @@ class AICG_Gutenberg_Converter {
 
         // Galerías de imágenes (aicg-gallery) - mantener como bloque HTML para preservar flex layout
         if (strpos($id, 'aicg-gallery') !== false || strpos($class, 'aicg-gallery') !== false) {
-            error_log('[AICG Gutenberg] Preservando galería de imágenes como HTML');
+            AICG_Logger::debug('[AICG Gutenberg] Preservando galería de imágenes como HTML');
             return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
         }
 
         // Divs con display:flex - mantener como HTML para preservar layout
         if (strpos($style, 'display: flex') !== false || strpos($style, 'display:flex') !== false) {
-            error_log('[AICG Gutenberg] Preservando div con flex layout como HTML');
+            AICG_Logger::debug('[AICG Gutenberg] Preservando div con flex layout como HTML');
             return self::wrap_as_html_block(self::decode_html($dom->saveHTML($node)));
         }
 

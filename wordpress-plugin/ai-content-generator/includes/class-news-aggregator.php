@@ -87,7 +87,7 @@ class AICG_News_Aggregator {
         register_shutdown_function(function() {
             $error = error_get_last();
             if ($error && in_array($error['type'], array(E_ERROR, E_PARSE, E_CORE_ERROR, E_COMPILE_ERROR))) {
-                error_log('[AICG] ERROR FATAL en generate(): ' . $error['message'] . ' en ' . $error['file'] . ':' . $error['line']);
+                AICG_Logger::debug('[AICG] ERROR FATAL en generate(): ' . $error['message'] . ' en ' . $error['file'] . ':' . $error['line']);
             }
         });
 
@@ -160,10 +160,10 @@ class AICG_News_Aggregator {
                         $result['cost'] += isset($summary_result['cost']) ? $summary_result['cost'] : 0;
                     } elseif (is_wp_error($summary_result)) {
                         // Log error pero continuar
-                        error_log('[AICG] Error generando resumen de titulares: ' . $summary_result->get_error_message());
+                        AICG_Logger::debug('[AICG] Error generando resumen de titulares: ' . $summary_result->get_error_message());
                     }
                 } else {
-                    error_log('[AICG] No se obtuvieron titulares principales');
+                    AICG_Logger::debug('[AICG] No se obtuvieron titulares principales');
                 }
             } else {
                 // Agregar marcador para imagen al inicio aunque no haya resumen
@@ -184,7 +184,7 @@ class AICG_News_Aggregator {
             $all_processed_news = array();
 
             foreach ($args['topics'] as $topic) {
-                error_log('[AICG] Procesando tema: ' . $topic);
+                AICG_Logger::debug('[AICG] Procesando tema: ' . $topic);
 
                 // Inicializar detalles del tema
                 $topic_detail = array(
@@ -198,27 +198,27 @@ class AICG_News_Aggregator {
 
                 $news = $this->fetch_news_for_topic($topic);
                 $original_count = count($news);
-                error_log('[AICG] Noticias obtenidas para "' . $topic . '": ' . $original_count);
+                AICG_Logger::debug('[AICG] Noticias obtenidas para "' . $topic . '": ' . $original_count);
 
                 // Filtrar URLs ya usadas (base de datos + sesión actual)
                 $all_used_urls = array_merge($used_urls, $session_used_urls);
                 $news = array_filter($news, function($item) use ($all_used_urls) {
                     return !in_array($item['link'], $all_used_urls);
                 });
-                error_log('[AICG] Noticias después de filtrar usadas para "' . $topic . '": ' . count($news));
+                AICG_Logger::debug('[AICG] Noticias después de filtrar usadas para "' . $topic . '": ' . count($news));
 
                 // Filtrar noticias locales en sección internacional
                 if (strtolower($topic) === 'internacional') {
                     $news = array_filter($news, function($item) {
                         return !$this->is_local_news($item['title'], $item['description']);
                     });
-                    error_log('[AICG] Noticias después de filtrar locales: ' . count($news));
+                    AICG_Logger::debug('[AICG] Noticias después de filtrar locales: ' . count($news));
                 }
 
                 $news = array_slice($news, 0, 5); // Máximo 5 noticias por tema
 
                 if (empty($news)) {
-                    error_log('[AICG] Sin noticias para "' . $topic . '" después de filtros');
+                    AICG_Logger::debug('[AICG] Sin noticias para "' . $topic . '" después de filtros');
                     $topic_detail['status'] = 'no_news';
                     $topic_detail['message'] = __('Sin noticias disponibles para este tema', 'ai-content-generator');
                     $result['topics_details'][] = $topic_detail;
@@ -229,7 +229,7 @@ class AICG_News_Aggregator {
                 $topic_summary = $this->generate_topic_summary($topic, $news);
 
                 if (is_wp_error($topic_summary)) {
-                    error_log('[AICG] Error generando resumen para tema "' . $topic . '": ' . $topic_summary->get_error_message());
+                    AICG_Logger::debug('[AICG] Error generando resumen para tema "' . $topic . '": ' . $topic_summary->get_error_message());
                     $topic_detail['status'] = 'error';
                     $topic_detail['message'] = $topic_summary->get_error_message();
                     $result['topics_details'][] = $topic_detail;
@@ -237,7 +237,7 @@ class AICG_News_Aggregator {
                 }
 
                 if (empty($topic_summary['content'])) {
-                    error_log('[AICG] Resumen vacío para tema "' . $topic . '"');
+                    AICG_Logger::debug('[AICG] Resumen vacío para tema "' . $topic . '"');
                     $topic_detail['status'] = 'empty';
                     $topic_detail['message'] = __('No se pudo generar resumen', 'ai-content-generator');
                     $result['topics_details'][] = $topic_detail;
@@ -378,13 +378,6 @@ class AICG_News_Aggregator {
             $date_formatted = wp_date('l, j \d\e F \d\e Y');
             $result['title'] = sprintf(__('Resumen de noticias - %s', 'ai-content-generator'), $date_formatted);
 
-            // Agregar CSS y JS del carrusel si hay carruseles en el contenido
-            $carousel_enabled = get_option('aicg_news_carousel_enabled', true);
-            if ($carousel_enabled) {
-                array_unshift($content_parts, self::get_carousel_css());
-                $content_parts[] = self::get_carousel_js();
-            }
-
             $result['content'] = implode("\n", $content_parts);
 
             // Verificar que hay contenido real (más que solo el wrapper vacío)
@@ -392,24 +385,24 @@ class AICG_News_Aggregator {
             $content_without_wrapper = trim(strip_tags($content_without_wrapper));
 
             if (empty($content_without_wrapper) && empty($result['topics_processed'])) {
-                error_log('[AICG] No se generó contenido de noticias. Topics procesados: 0');
+                AICG_Logger::debug('[AICG] No se generó contenido de noticias. Topics procesados: 0');
                 return new WP_Error('no_content', __('No se pudo generar contenido. Verifica que hay noticias disponibles y que el proveedor de IA está funcionando correctamente.', 'ai-content-generator'));
             }
 
-            error_log('[AICG] Contenido generado. Topics: ' . implode(', ', $result['topics_processed']) . ' | Tokens: ' . $result['tokens_used']);
+            AICG_Logger::debug('[AICG] Contenido generado. Topics: ' . implode(', ', $result['topics_processed']) . ' | Tokens: ' . $result['tokens_used']);
 
             // Variable para la imagen generada
             $generated_image_data = null;
 
             // Generar imagen con IA si está habilitado
-            error_log('[AICG] generate_image arg: ' . ($args['generate_image'] ? 'true' : 'false'));
-            error_log('[AICG] main_headlines count: ' . count($main_headlines));
+            AICG_Logger::debug('[AICG] generate_image arg: ' . ($args['generate_image'] ? 'true' : 'false'));
+            AICG_Logger::debug('[AICG] main_headlines count: ' . count($main_headlines));
 
             if (!empty($args['generate_image'])) {
                 // Si no hay titulares principales, usar títulos de los temas procesados
                 $headlines_for_image = $main_headlines;
                 if (empty($headlines_for_image) && !empty($result['topics_processed'])) {
-                    error_log('[AICG] No hay titulares principales, usando temas procesados para imagen');
+                    AICG_Logger::debug('[AICG] No hay titulares principales, usando temas procesados para imagen');
                     foreach ($result['topics_processed'] as $topic) {
                         $headlines_for_image[] = array(
                             'title' => $topic,
@@ -419,13 +412,13 @@ class AICG_News_Aggregator {
                 }
 
                 if (!empty($headlines_for_image)) {
-                    error_log('[AICG] Generando imagen híbrida con ' . count($headlines_for_image) . ' titulares');
+                    AICG_Logger::debug('[AICG] Generando imagen híbrida con ' . count($headlines_for_image) . ' titulares');
 
                     // Try-catch específico para generación de imagen
                     try {
                         // Pasar también las noticias con URLs para el esquema híbrido
                         $image_result = $this->generate_featured_image($headlines_for_image, $all_processed_news);
-                        error_log('[AICG] generate_featured_image retornó: ' . (is_wp_error($image_result) ? 'WP_Error' : 'array') .
+                        AICG_Logger::debug('[AICG] generate_featured_image retornó: ' . (is_wp_error($image_result) ? 'WP_Error' : 'array') .
                                   (isset($image_result['source']) ? ' (fuente: ' . $image_result['source'] . ')' : ''));
 
                         if (!is_wp_error($image_result) && !empty($image_result['attachment_id'])) {
@@ -440,23 +433,23 @@ class AICG_News_Aggregator {
 
                             $result['generated_image_id'] = $image_result['attachment_id'];
                             $result['cost'] += isset($image_result['cost']) ? $image_result['cost'] : 0;
-                            error_log('[AICG] Imagen generada con ID: ' . $image_result['attachment_id']);
+                            AICG_Logger::debug('[AICG] Imagen generada con ID: ' . $image_result['attachment_id']);
                         } elseif (is_wp_error($image_result)) {
-                            error_log('[AICG] Error generando imagen: ' . $image_result->get_error_message());
+                            AICG_Logger::debug('[AICG] Error generando imagen: ' . $image_result->get_error_message());
                         }
                     } catch (Exception $img_e) {
-                        error_log('[AICG] Excepción generando imagen: ' . $img_e->getMessage());
+                        AICG_Logger::debug('[AICG] Excepción generando imagen: ' . $img_e->getMessage());
                         // Continuar sin imagen, no fallar todo el proceso
                     } catch (Error $img_err) {
-                        error_log('[AICG] Error fatal generando imagen: ' . $img_err->getMessage());
+                        AICG_Logger::debug('[AICG] Error fatal generando imagen: ' . $img_err->getMessage());
                         // Continuar sin imagen, no fallar todo el proceso
                     }
                 } else {
-                    error_log('[AICG] No hay titulares disponibles para generar imagen');
+                    AICG_Logger::debug('[AICG] No hay titulares disponibles para generar imagen');
                 }
             }
 
-            error_log('[AICG] Continuando después de generación de imagen...');
+            AICG_Logger::debug('[AICG] Continuando después de generación de imagen...');
 
             // Convertir a formato según configuración
             $content_format = get_option('aicg_content_format', 'gutenberg');
@@ -476,42 +469,42 @@ class AICG_News_Aggregator {
                     esc_attr($generated_image_data['alt'])
                 );
                 $result['content'] = str_replace('<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->', $image_html, $result['content']);
-                error_log('[AICG] Imagen insertada en HTML antes de conversión');
+                AICG_Logger::debug('[AICG] Imagen insertada en HTML antes de conversión');
             } else {
                 // Eliminar marcador si no hay imagen
                 $result['content'] = str_replace('<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->', '', $result['content']);
             }
 
-            error_log('[AICG] ========== INICIO CONVERSION GUTENBERG ==========');
-            error_log('[AICG] Formato de contenido configurado: "' . $content_format . '"');
-            error_log('[AICG] Clase Gutenberg existe: ' . (class_exists('AICG_Gutenberg_Converter') ? 'SI' : 'NO'));
-            error_log('[AICG] Comparación formato === gutenberg: ' . ($content_format === 'gutenberg' ? 'TRUE' : 'FALSE'));
+            AICG_Logger::debug('[AICG] ========== INICIO CONVERSION GUTENBERG ==========');
+            AICG_Logger::debug('[AICG] Formato de contenido configurado: "' . $content_format . '"');
+            AICG_Logger::debug('[AICG] Clase Gutenberg existe: ' . (class_exists('AICG_Gutenberg_Converter') ? 'SI' : 'NO'));
+            AICG_Logger::debug('[AICG] Comparación formato === gutenberg: ' . ($content_format === 'gutenberg' ? 'TRUE' : 'FALSE'));
 
             if ($content_format === 'gutenberg' && class_exists('AICG_Gutenberg_Converter')) {
-                error_log('[AICG] ENTRANDO al bloque de conversión Gutenberg');
-                error_log('[AICG] HTML antes de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
+                AICG_Logger::debug('[AICG] ENTRANDO al bloque de conversión Gutenberg');
+                AICG_Logger::debug('[AICG] HTML antes de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
 
                 // Convertir HTML a bloques Gutenberg (la imagen ya está incluida en el HTML)
                 $result['content'] = AICG_Gutenberg_Converter::convert($result['content']);
 
-                error_log('[AICG] Contenido después de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
-                error_log('[AICG] Contenido convertido a formato Gutenberg');
+                AICG_Logger::debug('[AICG] Contenido después de convertir (primeros 500 chars): ' . substr($result['content'], 0, 500));
+                AICG_Logger::debug('[AICG] Contenido convertido a formato Gutenberg');
             } else {
-                error_log('[AICG] NO se entró al bloque de conversión Gutenberg. Razón: formato="' . $content_format . '", clase_existe=' . (class_exists('AICG_Gutenberg_Converter') ? 'SI' : 'NO'));
+                AICG_Logger::debug('[AICG] NO se entró al bloque de conversión Gutenberg. Razón: formato="' . $content_format . '", clase_existe=' . (class_exists('AICG_Gutenberg_Converter') ? 'SI' : 'NO'));
             }
 
             // Usar imagen destacada fija si está configurada
             $featured_image_id = get_option('aicg_news_featured_image', 0);
             if ($featured_image_id > 0) {
                 $result['image_id'] = $featured_image_id;
-                error_log('[AICG] Usando imagen destacada fija ID: ' . $featured_image_id);
+                AICG_Logger::debug('[AICG] Usando imagen destacada fija ID: ' . $featured_image_id);
             }
 
             // Validar que el contenido tiene formato de bloques Gutenberg
             if ($content_format === 'gutenberg') {
                 $starts_with_block = strpos(ltrim($result['content']), '<!-- wp:') === 0;
-                error_log('[AICG] Contenido inicia con bloque Gutenberg: ' . ($starts_with_block ? 'SI' : 'NO'));
-                error_log('[AICG] Primeros 200 caracteres del contenido final: ' . substr($result['content'], 0, 200));
+                AICG_Logger::debug('[AICG] Contenido inicia con bloque Gutenberg: ' . ($starts_with_block ? 'SI' : 'NO'));
+                AICG_Logger::debug('[AICG] Primeros 200 caracteres del contenido final: ' . substr($result['content'], 0, 200));
             }
 
             // Crear post
@@ -611,7 +604,7 @@ class AICG_News_Aggregator {
             }
 
             if ($is_relevant_source) {
-                error_log('[AICG] Consultando fuente personalizada para "' . $topic . '": ' . $source['url']);
+                AICG_Logger::debug('[AICG] Consultando fuente personalizada para "' . $topic . '": ' . $source['url']);
                 $source_news = $this->fetch_rss_feed($source['url']);
 
                 // Agregar nombre de la fuente a cada noticia
@@ -623,7 +616,7 @@ class AICG_News_Aggregator {
                 }
 
                 $all_news = array_merge($all_news, $source_news);
-                error_log('[AICG] Noticias obtenidas de ' . $source['nombre'] . ': ' . count($source_news));
+                AICG_Logger::debug('[AICG] Noticias obtenidas de ' . $source['nombre'] . ': ' . count($source_news));
             }
         }
 
@@ -642,19 +635,19 @@ class AICG_News_Aggregator {
             if (preg_match('/[?&]q=([^&]+)/', $template, $matches)) {
                 // Reemplazar el valor literal por {topic}
                 $template = preg_replace('/([?&]q=)[^&]+/', '$1{topic}', $template);
-                error_log('[AICG] Plantilla de búsqueda corregida automáticamente. Nueva plantilla: ' . $template);
+                AICG_Logger::debug('[AICG] Plantilla de búsqueda corregida automáticamente. Nueva plantilla: ' . $template);
                 // Guardar la corrección para evitar repetir el proceso
                 update_option('aicg_news_search_template', $template);
             } else {
                 // No se pudo corregir, usar la plantilla por defecto
-                error_log('[AICG] Plantilla de búsqueda inválida, usando valor por defecto');
+                AICG_Logger::debug('[AICG] Plantilla de búsqueda inválida, usando valor por defecto');
                 $template = $default_template;
             }
         }
 
         // Mejorar la búsqueda con términos más específicos según el tema
         $enhanced_topic = $this->enhance_topic_query($topic);
-        error_log('[AICG] Tema "' . $topic . '" mejorado a: "' . $enhanced_topic . '"');
+        AICG_Logger::debug('[AICG] Tema "' . $topic . '" mejorado a: "' . $enhanced_topic . '"');
 
         $url = str_replace('{topic}', urlencode($enhanced_topic), $template);
         $google_news = $this->fetch_rss_feed($url);
@@ -663,15 +656,15 @@ class AICG_News_Aggregator {
         $all_news = array_merge($all_news, $google_news);
         $count_before_relevance = count($all_news);
 
-        error_log('[AICG] Total noticias combinadas para "' . $topic . '": ' . $count_before_relevance . ' (personalizadas: ' . (count($all_news) - count($google_news)) . ', Google: ' . count($google_news) . ')');
+        AICG_Logger::debug('[AICG] Total noticias combinadas para "' . $topic . '": ' . $count_before_relevance . ' (personalizadas: ' . (count($all_news) - count($google_news)) . ', Google: ' . count($google_news) . ')');
 
         // Filtrar noticias antiguas (más de 48 horas)
         $all_news = $this->filter_old_news($all_news, 48);
-        error_log('[AICG] Noticias después de filtro por fecha para "' . $topic . '": ' . count($all_news) . ' (de ' . $count_before_relevance . ')');
+        AICG_Logger::debug('[AICG] Noticias después de filtro por fecha para "' . $topic . '": ' . count($all_news) . ' (de ' . $count_before_relevance . ')');
 
         // Filtrar noticias que no sean relevantes al tema
         $news = $this->filter_relevant_news($all_news, $topic);
-        error_log('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . count($all_news) . ')');
+        AICG_Logger::debug('[AICG] Noticias después de filtro de relevancia para "' . $topic . '": ' . count($news) . ' (de ' . count($all_news) . ')');
 
         // Eliminar duplicados por título similar
         $news = $this->remove_duplicate_news($news);
@@ -739,7 +732,7 @@ class AICG_News_Aggregator {
                 foreach ($used_titles as $used_title) {
                     if ($this->titles_are_similar($normalized_title, $used_title)) {
                         $is_duplicate = true;
-                        error_log('[AICG] Título duplicado detectado (DB): "' . substr($item['title'], 0, 50) . '..."');
+                        AICG_Logger::debug('[AICG] Título duplicado detectado (DB): "' . substr($item['title'], 0, 50) . '..."');
                         break;
                     }
                 }
@@ -1046,7 +1039,7 @@ class AICG_News_Aggregator {
         });
 
         if ($filtered_count > 0) {
-            error_log('[AICG] Excluidas ' . $filtered_count . ' noticias de deportes');
+            AICG_Logger::debug('[AICG] Excluidas ' . $filtered_count . ' noticias de deportes');
         }
 
         return $filtered_news;
@@ -1094,7 +1087,7 @@ class AICG_News_Aggregator {
      */
     private function fetch_rss_feed($url) {
         if (!$this->is_safe_remote_url($url)) {
-            error_log('[AICG] Feed bloqueado por seguridad (SSRF): ' . substr($url, 0, 100));
+            AICG_Logger::debug('[AICG] Feed bloqueado por seguridad (SSRF): ' . substr($url, 0, 100));
             return array();
         }
 
@@ -1412,7 +1405,7 @@ EJEMPLO DE FORMATO:
         require_once ABSPATH . 'wp-admin/includes/upgrade.php';
         dbDelta($sql);
 
-        error_log('[AICG] Tabla ' . $table . ' creada/verificada');
+        AICG_Logger::debug('[AICG] Tabla ' . $table . ' creada/verificada');
     }
 
     /**
@@ -1436,7 +1429,7 @@ EJEMPLO DE FORMATO:
         if (!$column_exists) {
             // Agregar la columna si no existe
             $wpdb->query("ALTER TABLE $table ADD COLUMN title_normalized VARCHAR(500) DEFAULT NULL");
-            error_log('[AICG] Columna title_normalized agregada a tabla ' . $table);
+            AICG_Logger::debug('[AICG] Columna title_normalized agregada a tabla ' . $table);
             return array();
         }
 
@@ -1504,37 +1497,12 @@ EJEMPLO DE FORMATO:
      * @return array|WP_Error
      */
     private function generate_featured_image($headlines, $news_items = array()) {
-        error_log('[AICG] Iniciando generación de imagen del resumen');
+        AICG_Logger::debug('[AICG] Iniciando generación de imagen del resumen');
 
         // Para la imagen principal del resumen, siempre generamos con IA
         // Las imágenes OG se usan solo para las galerías de cada tema
-        error_log('[AICG] Generando imagen con IA para el resumen principal');
+        AICG_Logger::debug('[AICG] Generando imagen con IA para el resumen principal');
         return $this->generate_ai_image($headlines);
-    }
-
-    /**
-     * Extraer imagen OG/Twitter de las URLs de las noticias
-     *
-     * @param array $news_items Array de noticias con 'link'
-     * @return array|WP_Error
-     */
-    private function extract_og_image_from_sources($news_items) {
-        foreach (array_slice($news_items, 0, 5) as $item) {
-            if (empty($item['link'])) {
-                continue;
-            }
-
-            $image_url = $this->get_og_image_from_url($item['link']);
-            if ($image_url) {
-                // Descargar y guardar la imagen
-                $attachment_id = $this->save_image_to_media_library($image_url);
-                if (!is_wp_error($attachment_id)) {
-                    return array('attachment_id' => $attachment_id);
-                }
-            }
-        }
-
-        return new WP_Error('no_og_image', __('No se encontró imagen OG en las fuentes', 'ai-content-generator'));
     }
 
     /**
@@ -1547,15 +1515,15 @@ EJEMPLO DE FORMATO:
         // Resolver URL real (especialmente para Google News)
         $real_url = $this->resolve_google_news_url($url);
         if (!$real_url) {
-            error_log('[AICG] No se pudo resolver URL: ' . $url);
+            AICG_Logger::debug('[AICG] No se pudo resolver URL: ' . $url);
             return false;
         }
 
-        error_log('[AICG] URL resuelta: ' . $real_url);
+        AICG_Logger::debug('[AICG] URL resuelta: ' . $real_url);
 
         // La URL proviene de contenido externo: validar destino (anti-SSRF)
         if (!$this->is_safe_remote_url($real_url)) {
-            error_log('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($real_url, 0, 100));
+            AICG_Logger::debug('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($real_url, 0, 100));
             return false;
         }
 
@@ -1571,7 +1539,7 @@ EJEMPLO DE FORMATO:
         ));
 
         if (is_wp_error($response)) {
-            error_log('[AICG] Error obteniendo página: ' . $response->get_error_message());
+            AICG_Logger::debug('[AICG] Error obteniendo página: ' . $response->get_error_message());
             return false;
         }
 
@@ -1594,7 +1562,7 @@ EJEMPLO DE FORMATO:
             if (preg_match($pattern, $html, $matches)) {
                 $image_url = $this->validate_image_url($matches[1]);
                 if ($image_url) {
-                    error_log('[AICG] Imagen OG encontrada: ' . $image_url);
+                    AICG_Logger::debug('[AICG] Imagen OG encontrada: ' . $image_url);
                     return $image_url;
                 }
             }
@@ -1615,19 +1583,19 @@ EJEMPLO DE FORMATO:
             return $url;
         }
 
-        error_log('[AICG] Resolviendo URL de Google News: ' . substr($url, 0, 100) . '...');
+        AICG_Logger::debug('[AICG] Resolviendo URL de Google News: ' . substr($url, 0, 100) . '...');
 
         // MÉTODO 1: Usar la API batchexecute de Google (método más confiable para URLs modernas)
         $batch_url = $this->resolve_with_batchexecute($url);
         if ($batch_url) {
-            error_log('[AICG] URL desde batchexecute: ' . $batch_url);
+            AICG_Logger::debug('[AICG] URL desde batchexecute: ' . $batch_url);
             return $batch_url;
         }
 
         // MÉTODO 2: Intentar decodificar desde el path de la URL (URLs antiguas)
         $decoded_url = $this->decode_google_news_url($url);
         if ($decoded_url) {
-            error_log('[AICG] URL decodificada de base64: ' . $decoded_url);
+            AICG_Logger::debug('[AICG] URL decodificada de base64: ' . $decoded_url);
             return $decoded_url;
         }
 
@@ -1635,12 +1603,12 @@ EJEMPLO DE FORMATO:
         if (function_exists('curl_init')) {
             $curl_url = $this->resolve_with_curl($url);
             if ($curl_url) {
-                error_log('[AICG] URL desde cURL redirect: ' . $curl_url);
+                AICG_Logger::debug('[AICG] URL desde cURL redirect: ' . $curl_url);
                 return $curl_url;
             }
         }
 
-        error_log('[AICG] No se pudo resolver URL de Google News');
+        AICG_Logger::debug('[AICG] No se pudo resolver URL de Google News');
         return false;
     }
 
@@ -1692,7 +1660,7 @@ EJEMPLO DE FORMATO:
         ));
 
         if (is_wp_error($response)) {
-            error_log('[AICG] Error en batchexecute: ' . $response->get_error_message());
+            AICG_Logger::debug('[AICG] Error en batchexecute: ' . $response->get_error_message());
             return false;
         }
 
@@ -1700,7 +1668,7 @@ EJEMPLO DE FORMATO:
         $http_code = wp_remote_retrieve_response_code($response);
 
         if ($http_code !== 200 || empty($response_body)) {
-            error_log('[AICG] batchexecute respuesta: HTTP ' . $http_code);
+            AICG_Logger::debug('[AICG] batchexecute respuesta: HTTP ' . $http_code);
             return false;
         }
 
@@ -1734,7 +1702,7 @@ EJEMPLO DE FORMATO:
      */
     private function resolve_with_curl($url) {
         if (!$this->is_safe_remote_url($url)) {
-            error_log('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($url, 0, 100));
+            AICG_Logger::debug('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($url, 0, 100));
             return false;
         }
 
@@ -1966,438 +1934,6 @@ EJEMPLO DE FORMATO:
     }
 
     /**
-     * Extraer región/país de los titulares
-     *
-     * @param array $headlines
-     * @return string|false
-     */
-    private function extract_region_from_headlines($headlines) {
-        // Lista de países y regiones
-        $regions = array(
-            // Países de América
-            'estados unidos' => 'United States',
-            'eeuu' => 'United States',
-            'usa' => 'United States',
-            'méxico' => 'Mexico',
-            'mexico' => 'Mexico',
-            'canadá' => 'Canada',
-            'canada' => 'Canada',
-            'brasil' => 'Brazil',
-            'argentina' => 'Argentina',
-            'chile' => 'Chile',
-            'colombia' => 'Colombia',
-            'perú' => 'Peru',
-            'peru' => 'Peru',
-            'venezuela' => 'Venezuela',
-            'cuba' => 'Cuba',
-            'guatemala' => 'Guatemala',
-            'ecuador' => 'Ecuador',
-            'bolivia' => 'Bolivia',
-            'paraguay' => 'Paraguay',
-            'uruguay' => 'Uruguay',
-            'panamá' => 'Panama',
-            'panama' => 'Panama',
-            'costa rica' => 'Costa Rica',
-            'honduras' => 'Honduras',
-            'el salvador' => 'El Salvador',
-            'nicaragua' => 'Nicaragua',
-            'puerto rico' => 'Puerto Rico',
-            'república dominicana' => 'Dominican Republic',
-            'haití' => 'Haiti',
-            'haiti' => 'Haiti',
-
-            // Europa
-            'rusia' => 'Russia',
-            'ucrania' => 'Ukraine',
-            'alemania' => 'Germany',
-            'francia' => 'France',
-            'reino unido' => 'United Kingdom',
-            'inglaterra' => 'England',
-            'españa' => 'Spain',
-            'italia' => 'Italy',
-            'portugal' => 'Portugal',
-            'polonia' => 'Poland',
-            'holanda' => 'Netherlands',
-            'países bajos' => 'Netherlands',
-            'bélgica' => 'Belgium',
-            'belgica' => 'Belgium',
-            'suiza' => 'Switzerland',
-            'austria' => 'Austria',
-            'grecia' => 'Greece',
-            'turquía' => 'Turkey',
-            'turquia' => 'Turkey',
-            'suecia' => 'Sweden',
-            'noruega' => 'Norway',
-            'dinamarca' => 'Denmark',
-            'finlandia' => 'Finland',
-            'irlanda' => 'Ireland',
-            'escocia' => 'Scotland',
-            'rumania' => 'Romania',
-            'hungría' => 'Hungary',
-            'hungria' => 'Hungary',
-            'república checa' => 'Czech Republic',
-            'serbia' => 'Serbia',
-            'croacia' => 'Croatia',
-            'bulgaria' => 'Bulgaria',
-            'eslovaquia' => 'Slovakia',
-            'eslovenia' => 'Slovenia',
-
-            // Asia
-            'china' => 'China',
-            'japón' => 'Japan',
-            'japon' => 'Japan',
-            'corea del sur' => 'South Korea',
-            'corea del norte' => 'North Korea',
-            'india' => 'India',
-            'pakistán' => 'Pakistan',
-            'pakistan' => 'Pakistan',
-            'afganistán' => 'Afghanistan',
-            'afganistan' => 'Afghanistan',
-            'irán' => 'Iran',
-            'iran' => 'Iran',
-            'irak' => 'Iraq',
-            'iraq' => 'Iraq',
-            'siria' => 'Syria',
-            'israel' => 'Israel',
-            'palestina' => 'Palestine',
-            'gaza' => 'Gaza Strip',
-            'líbano' => 'Lebanon',
-            'libano' => 'Lebanon',
-            'arabia saudita' => 'Saudi Arabia',
-            'arabia saudí' => 'Saudi Arabia',
-            'emiratos árabes' => 'United Arab Emirates',
-            'dubai' => 'Dubai',
-            'qatar' => 'Qatar',
-            'tailandia' => 'Thailand',
-            'vietnam' => 'Vietnam',
-            'filipinas' => 'Philippines',
-            'indonesia' => 'Indonesia',
-            'malasia' => 'Malaysia',
-            'singapur' => 'Singapore',
-            'taiwán' => 'Taiwan',
-            'taiwan' => 'Taiwan',
-            'hong kong' => 'Hong Kong',
-            'bangladesh' => 'Bangladesh',
-            'nepal' => 'Nepal',
-            'myanmar' => 'Myanmar',
-            'birmania' => 'Myanmar',
-            'camboya' => 'Cambodia',
-            'laos' => 'Laos',
-            'kazajistán' => 'Kazakhstan',
-            'uzbekistán' => 'Uzbekistan',
-
-            // África
-            'egipto' => 'Egypt',
-            'sudáfrica' => 'South Africa',
-            'sudafrica' => 'South Africa',
-            'nigeria' => 'Nigeria',
-            'marruecos' => 'Morocco',
-            'argelia' => 'Algeria',
-            'túnez' => 'Tunisia',
-            'tunez' => 'Tunisia',
-            'libia' => 'Libya',
-            'sudán' => 'Sudan',
-            'sudan' => 'Sudan',
-            'etiopía' => 'Ethiopia',
-            'etiopia' => 'Ethiopia',
-            'kenia' => 'Kenya',
-            'kenya' => 'Kenya',
-            'tanzania' => 'Tanzania',
-            'uganda' => 'Uganda',
-            'zimbabue' => 'Zimbabwe',
-            'ghana' => 'Ghana',
-            'senegal' => 'Senegal',
-            'costa de marfil' => 'Ivory Coast',
-            'camerún' => 'Cameroon',
-            'camerun' => 'Cameroon',
-            'congo' => 'Congo',
-            'angola' => 'Angola',
-            'mozambique' => 'Mozambique',
-            'somalia' => 'Somalia',
-
-            // Oceanía
-            'australia' => 'Australia',
-            'nueva zelanda' => 'New Zealand',
-            'nueva zelandia' => 'New Zealand',
-
-            // Regiones
-            'medio oriente' => 'Middle East',
-            'oriente medio' => 'Middle East',
-            'unión europea' => 'European Union',
-            'union europea' => 'European Union',
-            'europa' => 'Europe',
-            'asia' => 'Asia',
-            'áfrica' => 'Africa',
-            'africa' => 'Africa',
-            'latinoamérica' => 'Latin America',
-            'latinoamerica' => 'Latin America',
-            'américa latina' => 'Latin America',
-            'centroamérica' => 'Central America',
-            'centroamerica' => 'Central America',
-            'sudamérica' => 'South America',
-            'sudamerica' => 'South America',
-            'norteamérica' => 'North America',
-            'norteamerica' => 'North America',
-            'caribe' => 'Caribbean',
-        );
-
-        // Buscar en los titulares
-        foreach ($headlines as $headline) {
-            $title = strtolower($headline['title']);
-
-            foreach ($regions as $spanish => $english) {
-                if (strpos($title, $spanish) !== false) {
-                    return $english;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Extraer región prominente (que aparece en múltiples titulares)
-     * Solo devuelve una región si aparece en al menos 2 titulares
-     *
-     * @param array $headlines
-     * @return string|false
-     */
-    private function extract_prominent_region_from_headlines($headlines) {
-        if (count($headlines) < 2) {
-            return false;
-        }
-
-        // Obtener la lista de regiones
-        $regions = $this->get_regions_list();
-
-        // Contar menciones de cada región
-        $region_counts = array();
-
-        foreach ($headlines as $headline) {
-            $title = strtolower($headline['title']);
-
-            foreach ($regions as $spanish => $english) {
-                if (strpos($title, $spanish) !== false) {
-                    if (!isset($region_counts[$english])) {
-                        $region_counts[$english] = 0;
-                    }
-                    $region_counts[$english]++;
-                    break; // Solo contar una región por titular
-                }
-            }
-        }
-
-        // Buscar la región más mencionada con al menos 2 menciones
-        if (!empty($region_counts)) {
-            arsort($region_counts);
-            $top_region = key($region_counts);
-            $top_count = current($region_counts);
-
-            if ($top_count >= 2) {
-                error_log('[AICG] Región prominente: ' . $top_region . ' (' . $top_count . ' menciones)');
-                return $top_region;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Obtener lista de regiones (para reutilizar)
-     *
-     * @return array
-     */
-    private function get_regions_list() {
-        return array(
-            // Países de América
-            'estados unidos' => 'United States',
-            'eeuu' => 'United States',
-            'usa' => 'United States',
-            'méxico' => 'Mexico',
-            'mexico' => 'Mexico',
-            'canadá' => 'Canada',
-            'canada' => 'Canada',
-            'brasil' => 'Brazil',
-            'argentina' => 'Argentina',
-            'chile' => 'Chile',
-            'colombia' => 'Colombia',
-            'perú' => 'Peru',
-            'peru' => 'Peru',
-            'venezuela' => 'Venezuela',
-            'cuba' => 'Cuba',
-            'guatemala' => 'Guatemala',
-            'ecuador' => 'Ecuador',
-            'bolivia' => 'Bolivia',
-            'paraguay' => 'Paraguay',
-            'uruguay' => 'Uruguay',
-            'panamá' => 'Panama',
-            'panama' => 'Panama',
-            'costa rica' => 'Costa Rica',
-            'honduras' => 'Honduras',
-            'el salvador' => 'El Salvador',
-            'nicaragua' => 'Nicaragua',
-            // Europa
-            'rusia' => 'Russia',
-            'ucrania' => 'Ukraine',
-            'alemania' => 'Germany',
-            'francia' => 'France',
-            'reino unido' => 'United Kingdom',
-            'españa' => 'Spain',
-            'italia' => 'Italy',
-            // Asia
-            'china' => 'China',
-            'japón' => 'Japan',
-            'japon' => 'Japan',
-            'corea del sur' => 'South Korea',
-            'corea del norte' => 'North Korea',
-            'india' => 'India',
-            'irán' => 'Iran',
-            'iran' => 'Iran',
-            'israel' => 'Israel',
-            'palestina' => 'Palestine',
-            'gaza' => 'Gaza Strip',
-            // Regiones
-            'medio oriente' => 'Middle East',
-            'oriente medio' => 'Middle East',
-            'europa' => 'Europe',
-            'asia' => 'Asia'
-        );
-    }
-
-    /**
-     * Obtener imagen de mapa de una región
-     *
-     * @param string $region Nombre de la región en inglés
-     * @return array|WP_Error
-     */
-    private function fetch_map_image($region) {
-        // Usar Wikimedia Commons para mapas
-        // Buscar mapa de ubicación o mapa político
-        $search_terms = array(
-            $region . ' location map',
-            $region . ' in the world',
-            $region . ' map',
-        );
-
-        foreach ($search_terms as $term) {
-            $image_url = $this->search_wikimedia_map($term);
-            if ($image_url) {
-                $attachment_id = $this->save_image_to_media_library($image_url);
-                if (!is_wp_error($attachment_id)) {
-                    return array('attachment_id' => $attachment_id);
-                }
-            }
-        }
-
-        return new WP_Error('no_map_found', __('No se encontró mapa para la región', 'ai-content-generator'));
-    }
-
-    /**
-     * Buscar mapa en Wikimedia Commons
-     *
-     * @param string $query Término de búsqueda
-     * @return string|false URL de la imagen
-     */
-    private function search_wikimedia_map($query) {
-        // API de Wikimedia Commons
-        $api_url = 'https://commons.wikimedia.org/w/api.php?' . http_build_query(array(
-            'action' => 'query',
-            'list' => 'search',
-            'srsearch' => $query . ' filetype:bitmap',
-            'srnamespace' => '6', // File namespace
-            'srlimit' => '5',
-            'format' => 'json',
-        ));
-
-        $response = wp_remote_get($api_url, array(
-            'timeout' => 15,
-            'headers' => array(
-                'User-Agent' => 'WordPress AI Content Generator Plugin'
-            )
-        ));
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        if (empty($data['query']['search'])) {
-            return false;
-        }
-
-        // Buscar el primer resultado que sea un mapa
-        foreach ($data['query']['search'] as $result) {
-            $title = $result['title'];
-
-            // Filtrar para obtener solo mapas (evitar banderas, escudos, etc.)
-            $title_lower = strtolower($title);
-            if (strpos($title_lower, 'map') !== false ||
-                strpos($title_lower, 'location') !== false ||
-                strpos($title_lower, 'mapa') !== false) {
-
-                // Evitar mapas muy viejos o de baja calidad
-                if (strpos($title_lower, 'flag') !== false ||
-                    strpos($title_lower, 'coat of arms') !== false ||
-                    strpos($title_lower, 'escudo') !== false) {
-                    continue;
-                }
-
-                // Obtener URL de la imagen
-                $image_url = $this->get_wikimedia_image_url($title);
-                if ($image_url) {
-                    return $image_url;
-                }
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Obtener URL directa de imagen de Wikimedia
-     *
-     * @param string $title Título del archivo (ej: "File:Map.png")
-     * @return string|false
-     */
-    private function get_wikimedia_image_url($title) {
-        $api_url = 'https://commons.wikimedia.org/w/api.php?' . http_build_query(array(
-            'action' => 'query',
-            'titles' => $title,
-            'prop' => 'imageinfo',
-            'iiprop' => 'url|size',
-            'iiurlwidth' => '1200', // Solicitar versión de 1200px de ancho
-            'format' => 'json',
-        ));
-
-        $response = wp_remote_get($api_url, array(
-            'timeout' => 15,
-            'headers' => array(
-                'User-Agent' => 'WordPress AI Content Generator Plugin'
-            )
-        ));
-
-        if (is_wp_error($response)) {
-            return false;
-        }
-
-        $data = json_decode(wp_remote_retrieve_body($response), true);
-        $pages = isset($data['query']['pages']) ? $data['query']['pages'] : array();
-
-        foreach ($pages as $page) {
-            if (isset($page['imageinfo'][0])) {
-                $info = $page['imageinfo'][0];
-                // Preferir la versión redimensionada si está disponible
-                if (isset($info['thumburl'])) {
-                    return $info['thumburl'];
-                }
-                return $info['url'];
-            }
-        }
-
-        return false;
-    }
-
-    /**
      * Generar imagen con IA (método original)
      *
      * @param array $headlines
@@ -2476,14 +2012,14 @@ EJEMPLO DE FORMATO:
 
         // Es una URL remota: validar destino (anti-SSRF) y descargar
         if (!$this->is_safe_remote_url($image_url)) {
-            error_log('[AICG] Imagen bloqueada por seguridad (SSRF): ' . substr($image_url, 0, 100));
+            AICG_Logger::debug('[AICG] Imagen bloqueada por seguridad (SSRF): ' . substr($image_url, 0, 100));
             return new WP_Error('unsafe_url', __('URL de imagen bloqueada por seguridad', 'ai-content-generator'));
         }
 
         $tmp_file = download_url($image_url);
 
         if (is_wp_error($tmp_file)) {
-            error_log('[AICG] Error descargando imagen: ' . $tmp_file->get_error_message());
+            AICG_Logger::debug('[AICG] Error descargando imagen: ' . $tmp_file->get_error_message());
             return $tmp_file;
         }
 
@@ -2512,7 +2048,7 @@ EJEMPLO DE FORMATO:
         // Limpiar archivo temporal si hubo error
         if (is_wp_error($attachment_id)) {
             @unlink($tmp_file);
-            error_log('[AICG] Error guardando imagen: ' . $attachment_id->get_error_message());
+            AICG_Logger::debug('[AICG] Error guardando imagen: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
 
@@ -2529,23 +2065,23 @@ EJEMPLO DE FORMATO:
     private function save_base64_image($data_url, $filename) {
         // Extraer tipo MIME y datos base64 (soporta formatos como png, jpeg, webp, gif)
         if (!preg_match('/^data:image\/([a-zA-Z0-9+]+);base64,(.+)$/s', $data_url, $matches)) {
-            error_log('[AICG] Invalid base64 format. First 100 chars: ' . substr($data_url, 0, 100));
+            AICG_Logger::debug('[AICG] Invalid base64 format. First 100 chars: ' . substr($data_url, 0, 100));
             return new WP_Error('invalid_base64', __('Formato de imagen base64 inválido', 'ai-content-generator'));
         }
 
         $image_type = strtolower($matches[1]);
         $base64_data = $matches[2];
 
-        error_log('[AICG] Saving base64 image. Type: ' . $image_type . ', Base64 length: ' . strlen($base64_data));
+        AICG_Logger::debug('[AICG] Saving base64 image. Type: ' . $image_type . ', Base64 length: ' . strlen($base64_data));
 
         // Decodificar base64
         $image_data = base64_decode($base64_data, true);
         if ($image_data === false) {
-            error_log('[AICG] Failed to decode base64 data');
+            AICG_Logger::debug('[AICG] Failed to decode base64 data');
             return new WP_Error('decode_error', __('Error al decodificar imagen base64', 'ai-content-generator'));
         }
 
-        error_log('[AICG] Decoded image size: ' . strlen($image_data) . ' bytes');
+        AICG_Logger::debug('[AICG] Decoded image size: ' . strlen($image_data) . ' bytes');
 
         // Determinar extensión
         $ext = 'png';
@@ -2573,11 +2109,11 @@ EJEMPLO DE FORMATO:
         // Escribir datos al archivo
         $bytes_written = file_put_contents($tmp_file, $image_data);
         if ($bytes_written === false) {
-            error_log('[AICG] Failed to write image to: ' . $tmp_file);
+            AICG_Logger::debug('[AICG] Failed to write image to: ' . $tmp_file);
             return new WP_Error('write_error', __('Error al escribir archivo de imagen', 'ai-content-generator'));
         }
 
-        error_log('[AICG] Image written to: ' . $tmp_file . ' (' . $bytes_written . ' bytes)');
+        AICG_Logger::debug('[AICG] Image written to: ' . $tmp_file . ' (' . $bytes_written . ' bytes)');
 
         // Preparar array de archivo
         $file_array = array(
@@ -2591,11 +2127,11 @@ EJEMPLO DE FORMATO:
         // Limpiar archivo temporal si hubo error
         if (is_wp_error($attachment_id)) {
             @unlink($tmp_file);
-            error_log('[AICG] Error guardando imagen base64: ' . $attachment_id->get_error_message());
+            AICG_Logger::debug('[AICG] Error guardando imagen base64: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
 
-        error_log('[AICG] Image saved with attachment ID: ' . $attachment_id);
+        AICG_Logger::debug('[AICG] Image saved with attachment ID: ' . $attachment_id);
 
         return $attachment_id;
     }
@@ -2629,7 +2165,7 @@ EJEMPLO DE FORMATO:
         if (!empty($existing)) {
             $attachment_id = $existing[0]->ID;
             $thumb_url = wp_get_attachment_image_url($attachment_id, 'medium');
-            error_log('[AICG] Imagen ya existe en biblioteca: ' . $attachment_id);
+            AICG_Logger::debug('[AICG] Imagen ya existe en biblioteca: ' . $attachment_id);
             return array(
                 'attachment_id' => $attachment_id,
                 'url' => $thumb_url ?: wp_get_attachment_url($attachment_id)
@@ -2640,7 +2176,7 @@ EJEMPLO DE FORMATO:
         $tmp_file = download_url($image_url, 30);
 
         if (is_wp_error($tmp_file)) {
-            error_log('[AICG] Error descargando imagen para carrusel: ' . $tmp_file->get_error_message());
+            AICG_Logger::debug('[AICG] Error descargando imagen para carrusel: ' . $tmp_file->get_error_message());
             return $tmp_file;
         }
 
@@ -2683,7 +2219,7 @@ EJEMPLO DE FORMATO:
 
         if (is_wp_error($attachment_id)) {
             @unlink($tmp_file);
-            error_log('[AICG] Error guardando imagen carrusel: ' . $attachment_id->get_error_message());
+            AICG_Logger::debug('[AICG] Error guardando imagen carrusel: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
 
@@ -2696,7 +2232,7 @@ EJEMPLO DE FORMATO:
 
         $thumb_url = wp_get_attachment_image_url($attachment_id, 'medium');
 
-        error_log('[AICG] Imagen carrusel guardada: ' . $attachment_id);
+        AICG_Logger::debug('[AICG] Imagen carrusel guardada: ' . $attachment_id);
 
         return array(
             'attachment_id' => $attachment_id,
@@ -2736,7 +2272,7 @@ EJEMPLO DE FORMATO:
         // Usar el editor de imágenes de WordPress
         $editor = wp_get_image_editor($file_path);
         if (is_wp_error($editor)) {
-            error_log('[AICG] No se pudo crear editor de imagen: ' . $editor->get_error_message());
+            AICG_Logger::debug('[AICG] No se pudo crear editor de imagen: ' . $editor->get_error_message());
             return false;
         }
 
@@ -2748,7 +2284,7 @@ EJEMPLO DE FORMATO:
         $result = $editor->save($resized_path);
 
         if (is_wp_error($result)) {
-            error_log('[AICG] Error redimensionando: ' . $result->get_error_message());
+            AICG_Logger::debug('[AICG] Error redimensionando: ' . $result->get_error_message());
             return false;
         }
 
@@ -2878,26 +2414,6 @@ EJEMPLO DE FORMATO:
     }
 
     /**
-     * Obtener CSS de la galería (mantenido por compatibilidad)
-     * La galería ahora usa CSS inline para compatibilidad con WordPress
-     *
-     * @return string CSS vacío
-     */
-    public static function get_carousel_css() {
-        return '';
-    }
-
-    /**
-     * Obtener JavaScript de la galería (ya no es necesario)
-     * La galería ahora es estática con scroll horizontal nativo
-     *
-     * @return string JavaScript vacío
-     */
-    public static function get_carousel_js() {
-        return '';
-    }
-
-    /**
      * Crear post
      *
      * @param array $result
@@ -2982,7 +2498,7 @@ EJEMPLO DE FORMATO:
                     'post_modified_gmt' => current_time('mysql', true)
                 ));
 
-                error_log('[AICG] Updated existing news post ID: ' . $post_id);
+                AICG_Logger::debug('[AICG] Updated existing news post ID: ' . $post_id);
             }
         } else {
             // Solo agregar categoría si es un post nuevo (las páginas no tienen categorías)
@@ -3008,7 +2524,7 @@ EJEMPLO DE FORMATO:
                 update_option('aicg_news_target_post', $post_id);
             }
 
-            error_log('[AICG] Created new news post ID: ' . $post_id);
+            AICG_Logger::debug('[AICG] Created new news post ID: ' . $post_id);
         }
 
         AI_Content_Generator::remove_content_filters();

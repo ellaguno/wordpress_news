@@ -125,13 +125,6 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
     );
 
     /**
-     * Generar texto
-     *
-     * @param string $prompt
-     * @param array  $options
-     * @return array|WP_Error
-     */
-    /**
      * Modelo de texto a usar (el configurado, o gpt-4o por defecto)
      *
      * @param string $pattern
@@ -142,6 +135,13 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
         return parent::get_default_text_model($pattern, $fallback);
     }
 
+    /**
+     * Generar texto
+     *
+     * @param string $prompt
+     * @param array  $options
+     * @return array|WP_Error
+     */
     public function generate_text($prompt, $options = array()) {
         $defaults = array(
             'model' => $this->get_default_text_model(),
@@ -262,7 +262,7 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
         }
 
         if (!$image_url) {
-            error_log('[AICG] OpenAI image response: ' . print_r($response, true));
+            AICG_Logger::debug('[AICG] OpenAI image response: ' . substr(print_r($response, true), 0, 500));
             return new WP_Error('invalid_response', __('Respuesta inválida de generación de imagen', 'ai-content-generator'));
         }
 

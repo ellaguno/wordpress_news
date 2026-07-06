@@ -127,7 +127,7 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
 
         // Log del timeout que se está usando
         if (strpos($endpoint, 'image') !== false || strpos($endpoint, 'chat') !== false) {
-            error_log('[AICG] make_request a ' . $endpoint . ' con timeout=' . $this->timeout . 's');
+            AICG_Logger::debug('[AICG] make_request a ' . $endpoint . ' con timeout=' . $this->timeout . 's');
         }
 
         $args = array(
@@ -235,34 +235,5 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
      */
     protected function sanitize_for_log($prompt) {
         return substr(sanitize_text_field($prompt), 0, 100) . '...';
-    }
-
-    /**
-     * Registrar uso en la base de datos
-     *
-     * @param string $type Tipo de generación
-     * @param int    $post_id ID del post
-     * @param string $model Modelo usado
-     * @param string $topic Tema
-     * @param int    $tokens Tokens usados
-     * @param float  $cost Costo estimado
-     */
-    protected function log_usage($type, $post_id, $model, $topic, $tokens = 0, $cost = 0) {
-        global $wpdb;
-
-        $wpdb->insert(
-            $wpdb->prefix . 'aicg_history',
-            array(
-                'type'        => $type,
-                'post_id'     => $post_id,
-                'provider'    => $this->get_name(),
-                'model'       => $model,
-                'topic'       => $topic,
-                'tokens_used' => $tokens,
-                'cost'        => $cost,
-                'created_at'  => current_time('mysql')
-            ),
-            array('%s', '%d', '%s', '%s', '%s', '%d', '%f', '%s')
-        );
     }
 }

@@ -372,7 +372,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
 
         $options = wp_parse_args($options, $defaults);
 
-        error_log('[AICG] generate_image iniciado con timeout de ' . $this->timeout . ' segundos');
+        AICG_Logger::debug('[AICG] generate_image iniciado con timeout de ' . $this->timeout . ' segundos');
 
         // Verificar si el modelo usa la API de chat con modalities
         $image_models = $this->get_image_models();
@@ -407,7 +407,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             }
 
             if (!isset($response['data'][0]['url'])) {
-                error_log('[AICG] OpenRouter image response: ' . print_r($response, true));
+                AICG_Logger::debug('[AICG] OpenRouter image response: ' . substr(print_r($response, true), 0, 500));
                 $this->timeout = $original_timeout;
                 return new WP_Error('invalid_response', __('Respuesta inválida para generación de imagen', 'ai-content-generator'));
             }
@@ -424,7 +424,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             );
         } catch (Exception $e) {
             $this->timeout = $original_timeout;
-            error_log('[AICG] Exception en generate_image: ' . $e->getMessage());
+            AICG_Logger::debug('[AICG] Exception en generate_image: ' . $e->getMessage());
             return new WP_Error('image_generation_error', $e->getMessage());
         }
     }
@@ -458,7 +458,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         );
 
         if (isset($size_mapping[$size]) && in_array($size_mapping[$size], $supported_sizes)) {
-            error_log('[AICG] Mapeando tamaño ' . $size . ' a ' . $size_mapping[$size] . ' para modelo ' . $model);
+            AICG_Logger::debug('[AICG] Mapeando tamaño ' . $size . ' a ' . $size_mapping[$size] . ' para modelo ' . $model);
             return $size_mapping[$size];
         }
 
@@ -469,10 +469,10 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             $height = isset($parts[1]) ? intval($parts[1]) : 1024;
 
             if ($width > $height && in_array('1536x1024', $supported_sizes)) {
-                error_log('[AICG] Usando tamaño horizontal 1536x1024 para modelo ' . $model);
+                AICG_Logger::debug('[AICG] Usando tamaño horizontal 1536x1024 para modelo ' . $model);
                 return '1536x1024';
             } elseif ($height > $width && in_array('1024x1536', $supported_sizes)) {
-                error_log('[AICG] Usando tamaño vertical 1024x1536 para modelo ' . $model);
+                AICG_Logger::debug('[AICG] Usando tamaño vertical 1024x1536 para modelo ' . $model);
                 return '1024x1536';
             }
         }
@@ -527,7 +527,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
                 return $result;
             }
             // Si falla, continuamos con el método de chat
-            error_log('[AICG] Images endpoint failed, trying chat endpoint: ' . $result->get_error_message());
+            AICG_Logger::debug('[AICG] Images endpoint failed, trying chat endpoint: ' . $result->get_error_message());
         }
 
         // Obtener dimensiones del tamaño
@@ -562,27 +562,27 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             );
         }
 
-        error_log('[AICG] OpenRouter chat image request: ' . print_r($body, true));
-        error_log('[AICG] Iniciando make_request para imagen... (esto puede tardar varios minutos)');
+        AICG_Logger::debug('[AICG] OpenRouter chat image request: ' . substr(print_r($body, true), 0, 500));
+        AICG_Logger::debug('[AICG] Iniciando make_request para imagen... (esto puede tardar varios minutos)');
         $start_time = microtime(true);
 
         $response = $this->make_request('/chat/completions', $body);
 
         $elapsed = round(microtime(true) - $start_time, 2);
-        error_log('[AICG] make_request completado en ' . $elapsed . ' segundos');
+        AICG_Logger::debug('[AICG] make_request completado en ' . $elapsed . ' segundos');
 
         if (is_wp_error($response)) {
-            error_log('[AICG] OpenRouter chat image error: ' . $response->get_error_message());
+            AICG_Logger::debug('[AICG] OpenRouter chat image error: ' . $response->get_error_message());
             return $response;
         }
 
-        error_log('[AICG] OpenRouter chat image response keys: ' . print_r(array_keys($response), true));
+        AICG_Logger::debug('[AICG] OpenRouter chat image response keys: ' . print_r(array_keys($response), true));
 
         // Buscar la imagen en la respuesta
         $image_url = $this->extract_image_from_response($response);
 
         if (!$image_url) {
-            error_log('[AICG] OpenRouter full response: ' . print_r($response, true));
+            AICG_Logger::debug('[AICG] OpenRouter full response: ' . substr(print_r($response, true), 0, 500));
             return new WP_Error(
                 'no_image_in_response',
                 __('No se encontró una imagen en la respuesta del modelo. Verifica que el modelo soporta generación de imágenes.', 'ai-content-generator')
@@ -640,7 +640,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         // gpt-image-1 y gpt-5-image siempre retornan b64_json
         // No necesitamos especificar response_format ya que no es soportado
 
-        error_log('[AICG] OpenRouter images endpoint request: ' . print_r($body, true));
+        AICG_Logger::debug('[AICG] OpenRouter images endpoint request: ' . substr(print_r($body, true), 0, 500));
 
         $response = $this->make_request('/images/generations', $body);
 
@@ -648,17 +648,17 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             return $response;
         }
 
-        error_log('[AICG] OpenRouter images endpoint response keys: ' . print_r(array_keys($response), true));
+        AICG_Logger::debug('[AICG] OpenRouter images endpoint response keys: ' . print_r(array_keys($response), true));
 
         // Buscar en data[0].b64_json o data[0].url
         if (isset($response['data'][0]['b64_json'])) {
-            error_log('[AICG] Image found in data[0].b64_json');
+            AICG_Logger::debug('[AICG] Image found in data[0].b64_json');
             $image_url = 'data:image/png;base64,' . $response['data'][0]['b64_json'];
         } elseif (isset($response['data'][0]['url'])) {
-            error_log('[AICG] Image found in data[0].url');
+            AICG_Logger::debug('[AICG] Image found in data[0].url');
             $image_url = $response['data'][0]['url'];
         } else {
-            error_log('[AICG] No image in images endpoint response: ' . print_r($response, true));
+            AICG_Logger::debug('[AICG] No image in images endpoint response: ' . substr(print_r($response, true), 0, 500));
             return new WP_Error('no_image', __('No se encontró imagen en la respuesta', 'ai-content-generator'));
         }
 
@@ -689,22 +689,22 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             foreach ($images as $img) {
                 // Formato con image_url objeto
                 if (isset($img['type']) && $img['type'] === 'image_url' && isset($img['image_url']['url'])) {
-                    error_log('[AICG] Image found in message.images[].image_url.url');
+                    AICG_Logger::debug('[AICG] Image found in message.images[].image_url.url');
                     return $img['image_url']['url'];
                 }
                 // Formato directo con url
                 if (isset($img['url'])) {
-                    error_log('[AICG] Image found in message.images[].url');
+                    AICG_Logger::debug('[AICG] Image found in message.images[].url');
                     return $img['url'];
                 }
                 // Formato con b64_json
                 if (isset($img['b64_json'])) {
-                    error_log('[AICG] Image found in message.images[].b64_json');
+                    AICG_Logger::debug('[AICG] Image found in message.images[].b64_json');
                     return 'data:image/png;base64,' . $img['b64_json'];
                 }
                 // Si es string directo (data URL o URL)
                 if (is_string($img)) {
-                    error_log('[AICG] Image found in message.images[] as string');
+                    AICG_Logger::debug('[AICG] Image found in message.images[] as string');
                     return $img;
                 }
             }
@@ -719,27 +719,27 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
                 foreach ($content as $item) {
                     // Formato: {"type": "image_url", "image_url": {"url": "data:image/png;base64,..."}}
                     if (isset($item['type']) && $item['type'] === 'image_url' && isset($item['image_url']['url'])) {
-                        error_log('[AICG] Image found in content[].image_url.url');
+                        AICG_Logger::debug('[AICG] Image found in content[].image_url.url');
                         return $item['image_url']['url'];
                     }
                     // Formato: {"type": "image", "url": "..."}
                     if (isset($item['type']) && $item['type'] === 'image' && isset($item['url'])) {
-                        error_log('[AICG] Image found in content[].url');
+                        AICG_Logger::debug('[AICG] Image found in content[].url');
                         return $item['url'];
                     }
                     // Formato: {"type": "image", "image_url": {"url": "..."}}
                     if (isset($item['type']) && $item['type'] === 'image' && isset($item['image_url']['url'])) {
-                        error_log('[AICG] Image found in content[].image_url.url (type=image)');
+                        AICG_Logger::debug('[AICG] Image found in content[].image_url.url (type=image)');
                         return $item['image_url']['url'];
                     }
                     // Formato con b64_json
                     if (isset($item['type']) && $item['type'] === 'image' && isset($item['b64_json'])) {
-                        error_log('[AICG] Image found in content[].b64_json');
+                        AICG_Logger::debug('[AICG] Image found in content[].b64_json');
                         return 'data:image/png;base64,' . $item['b64_json'];
                     }
                     // Buscar base64 en cualquier campo de texto
                     if (isset($item['text']) && preg_match('/data:image\/[^;]+;base64,[A-Za-z0-9+\/=]+/', $item['text'], $matches)) {
-                        error_log('[AICG] Image found as base64 in content[].text');
+                        AICG_Logger::debug('[AICG] Image found as base64 in content[].text');
                         return $matches[0];
                     }
                 }
@@ -748,12 +748,12 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             elseif (is_string($content) && !empty($content)) {
                 // Buscar data URL base64
                 if (preg_match('/data:image\/[^;]+;base64,[A-Za-z0-9+\/=]+/', $content, $matches)) {
-                    error_log('[AICG] Image found as base64 in content string');
+                    AICG_Logger::debug('[AICG] Image found as base64 in content string');
                     return $matches[0];
                 }
                 // Buscar URL directa de imagen
                 if (preg_match('/(https?:\/\/[^\s\'"]+\.(png|jpg|jpeg|webp|gif))/i', $content, $matches)) {
-                    error_log('[AICG] Image found as URL in content string');
+                    AICG_Logger::debug('[AICG] Image found as URL in content string');
                     return $matches[1];
                 }
             }
@@ -761,26 +761,26 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
 
         // 3. Buscar en data[0] (formato OpenAI DALL-E tradicional)
         if (isset($response['data'][0]['url'])) {
-            error_log('[AICG] Image found in data[0].url (DALL-E format)');
+            AICG_Logger::debug('[AICG] Image found in data[0].url (DALL-E format)');
             return $response['data'][0]['url'];
         }
         if (isset($response['data'][0]['b64_json'])) {
-            error_log('[AICG] Image found in data[0].b64_json (DALL-E format)');
+            AICG_Logger::debug('[AICG] Image found in data[0].b64_json (DALL-E format)');
             return 'data:image/png;base64,' . $response['data'][0]['b64_json'];
         }
 
         // 4. Log detallado de la estructura para debugging
-        error_log('[AICG] No image found. Response structure analysis:');
+        AICG_Logger::debug('[AICG] No image found. Response structure analysis:');
         if (isset($response['choices'][0]['message'])) {
             $message = $response['choices'][0]['message'];
-            error_log('[AICG] - message keys: ' . print_r(array_keys($message), true));
+            AICG_Logger::debug('[AICG] - message keys: ' . print_r(array_keys($message), true));
             if (isset($message['content'])) {
                 $content_type = gettype($message['content']);
                 $content_empty = empty($message['content']);
-                error_log("[AICG] - content type: {$content_type}, empty: " . ($content_empty ? 'yes' : 'no'));
+                AICG_Logger::debug("[AICG] - content type: {$content_type}, empty: " . ($content_empty ? 'yes' : 'no'));
             }
             if (isset($message['images'])) {
-                error_log('[AICG] - images present: ' . print_r($message['images'], true));
+                AICG_Logger::debug('[AICG] - images present: ' . substr(print_r($message['images'], true), 0, 500));
             }
         }
 

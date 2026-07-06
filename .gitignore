@@ -30,3 +30,6 @@ storage/imagenes/
 # Sistema
 .DS_Store
 Thumbs.db
+
+# Zips de releases del plugin (generar con wordpress-plugin/build-release.sh)
+wordpress-plugin/*.zip

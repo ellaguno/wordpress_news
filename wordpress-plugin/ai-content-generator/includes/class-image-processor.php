@@ -102,14 +102,14 @@ class AICG_Image_Processor {
         $is_webp = (substr($header, 0, 4) === "RIFF" && substr($image_data, 8, 4) === "WEBP");
 
         if (!$is_png && !$is_jpeg && !$is_gif && !$is_webp) {
-            error_log('[AICG] Image header bytes: ' . bin2hex(substr($header, 0, 4)));
+            AICG_Logger::debug('[AICG] Image header bytes: ' . bin2hex(substr($header, 0, 4)));
             return new WP_Error(
                 'invalid_image_format',
                 __('El formato de imagen no es válido (esperado PNG, JPEG, GIF o WebP)', 'ai-content-generator')
             );
         }
 
-        error_log('[AICG] Successfully decoded base64 image: ' . strlen($image_data) . ' bytes, type: ' . $mime_type);
+        AICG_Logger::debug('[AICG] Successfully decoded base64 image: ' . strlen($image_data) . ' bytes, type: ' . $mime_type);
 
         return $image_data;
     }
