@@ -19,8 +19,12 @@ $stats = array(
     'total_news' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'news' AND status = 'success'"),
     'total_tokens' => $wpdb->get_var("SELECT SUM(tokens_used) FROM $table_history"),
     'total_cost' => $wpdb->get_var("SELECT SUM(cost) FROM $table_history"),
-    'last_7_days' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)")
+    'last_7_days' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"),
+    'month_cost' => $wpdb->get_var("SELECT SUM(cost) FROM $table_history WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')")
 );
+
+// Próximas ejecuciones programadas
+$scheduled_events = class_exists('AICG_Cron_Scheduler') ? AICG_Cron_Scheduler::get_scheduled_events() : array();
 
 // Verificar configuración
 $provider = get_option('aicg_ai_provider', 'openai');
@@ -74,6 +78,14 @@ $is_configured = !empty(get_option($api_key_option, ''));
     </div>
     <?php endif; ?>
 
+    <?php if (isset($_GET['aicg_ran'])) : ?>
+    <div class="notice notice-success is-dismissible">
+        <p>
+            <?php esc_html_e('Generación encolada. Se está ejecutando en segundo plano; aparecerá en el Historial en unos minutos.', 'ai-content-generator'); ?>
+        </p>
+    </div>
+    <?php endif; ?>
+
     <!-- Tarjetas de estadísticas -->
     <div class="aicg-stats-grid">
         <div class="aicg-stat-card">
@@ -112,9 +124,56 @@ $is_configured = !empty(get_option($api_key_option, ''));
             </div>
             <div class="aicg-stat-content">
                 <span class="aicg-stat-number">$<?php echo number_format(floatval($stats['total_cost']), 2); ?></span>
-                <span class="aicg-stat-label"><?php esc_html_e('Costo Estimado', 'ai-content-generator'); ?></span>
+                <span class="aicg-stat-label"><?php esc_html_e('Costo Total', 'ai-content-generator'); ?></span>
             </div>
         </div>
+
+        <div class="aicg-stat-card">
+            <div class="aicg-stat-icon">
+                <span class="dashicons dashicons-calendar-alt"></span>
+            </div>
+            <div class="aicg-stat-content">
+                <span class="aicg-stat-number">$<?php echo number_format(floatval($stats['month_cost']), 2); ?></span>
+                <span class="aicg-stat-label"><?php esc_html_e('Costo del Mes', 'ai-content-generator'); ?></span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Programación y ejecución manual -->
+    <div class="aicg-scheduled-runs">
+        <h2><?php esc_html_e('Generación Automática', 'ai-content-generator'); ?></h2>
+        <table class="aicg-status-table">
+            <tr>
+                <td><?php esc_html_e('Próximo artículo', 'ai-content-generator'); ?></td>
+                <td>
+                    <?php if (isset($scheduled_events['article'])) : ?>
+                        <strong><?php echo esc_html($scheduled_events['article']['date']); ?></strong>
+                        (<?php echo esc_html($scheduled_events['article']['frequency']); ?>)
+                    <?php else : ?>
+                        <span class="aicg-status-inactive"><?php esc_html_e('No programado', 'ai-content-generator'); ?></span>
+                    <?php endif; ?>
+                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aicg_run_now&type=article'), 'aicg_run_now')); ?>" class="button button-small" style="margin-left:10px;">
+                        <span class="dashicons dashicons-controls-play" style="vertical-align:middle;"></span>
+                        <?php esc_html_e('Ejecutar ahora', 'ai-content-generator'); ?>
+                    </a>
+                </td>
+            </tr>
+            <tr>
+                <td><?php esc_html_e('Próximas noticias', 'ai-content-generator'); ?></td>
+                <td>
+                    <?php if (isset($scheduled_events['news'])) : ?>
+                        <strong><?php echo esc_html($scheduled_events['news']['date']); ?></strong>
+                        (<?php echo esc_html($scheduled_events['news']['frequency']); ?>)
+                    <?php else : ?>
+                        <span class="aicg-status-inactive"><?php esc_html_e('No programado', 'ai-content-generator'); ?></span>
+                    <?php endif; ?>
+                    <a href="<?php echo esc_url(wp_nonce_url(admin_url('admin-post.php?action=aicg_run_now&type=news'), 'aicg_run_now')); ?>" class="button button-small" style="margin-left:10px;">
+                        <span class="dashicons dashicons-controls-play" style="vertical-align:middle;"></span>
+                        <?php esc_html_e('Ejecutar ahora', 'ai-content-generator'); ?>
+                    </a>
+                </td>
+            </tr>
+        </table>
     </div>
 
     <!-- Acciones rápidas -->

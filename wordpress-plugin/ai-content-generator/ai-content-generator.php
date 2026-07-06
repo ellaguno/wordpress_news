@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Generator
  * Plugin URI: https://github.com/sesolibre/ai-content-generator
  * Description: Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter)
- * Version: 2.9.0
+ * Version: 2.10.0
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Eduardo Llaguno
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constantes del plugin
-define('AICG_VERSION', '2.9.0');
+define('AICG_VERSION', '2.10.0');
 define('AICG_DB_VERSION', '2');
 define('AICG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AICG_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -60,6 +60,9 @@ final class AI_Content_Generator {
         $this->define_admin_hooks();
         $this->define_cron_hooks();
         $this->maybe_upgrade_database();
+
+        // Cola de trabajos en segundo plano (hook de ejecución)
+        AICG_Background_Jobs::init();
     }
 
     /**
@@ -127,6 +130,9 @@ final class AI_Content_Generator {
         require_once AICG_PLUGIN_DIR . 'includes/providers/class-deepseek-provider.php';
         require_once AICG_PLUGIN_DIR . 'includes/providers/class-openrouter-provider.php';
 
+        // Cola de trabajos en segundo plano
+        require_once AICG_PLUGIN_DIR . 'includes/class-background-jobs.php';
+
         // Generadores de contenido
         require_once AICG_PLUGIN_DIR . 'includes/class-article-generator.php';
         require_once AICG_PLUGIN_DIR . 'includes/class-news-aggregator.php';
@@ -171,13 +177,18 @@ final class AI_Content_Generator {
             // Cargar assets de admin
             add_action('admin_enqueue_scripts', array($admin_dashboard, 'enqueue_assets'));
 
-            // AJAX handlers
+            // AJAX handlers: encolan el trabajo y devuelven un job_id
             add_action('wp_ajax_aicg_generate_article', array($admin_dashboard, 'ajax_generate_article'));
             add_action('wp_ajax_aicg_generate_news', array($admin_dashboard, 'ajax_generate_news'));
+            add_action('wp_ajax_aicg_job_status', array($admin_dashboard, 'ajax_job_status'));
             add_action('wp_ajax_aicg_test_provider', array($admin_settings, 'ajax_test_provider'));
+            add_action('wp_ajax_aicg_fetch_models', array($admin_settings, 'ajax_fetch_models'));
 
             // Limpiar errores de cron desde el dashboard
             add_action('admin_post_aicg_clear_cron_errors', array($admin_dashboard, 'handle_clear_cron_errors'));
+
+            // Ejecutar generación programada manualmente ("Ejecutar ahora")
+            add_action('admin_post_aicg_run_now', array($admin_dashboard, 'handle_run_now'));
         }
     }
 

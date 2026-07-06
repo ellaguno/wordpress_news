@@ -171,8 +171,14 @@ if (!defined('ABSPATH')) {
                                 <input type="text"
                                        name="aicg_default_model"
                                        id="aicg_default_model"
+                                       list="aicg_default_model_list"
                                        value="<?php echo esc_attr(get_option('aicg_default_model', 'gpt-4o')); ?>"
                                        class="regular-text">
+                                <datalist id="aicg_default_model_list"></datalist>
+                                <button type="button" class="button button-secondary" id="aicg-load-models">
+                                    <?php esc_html_e('Cargar modelos', 'ai-content-generator'); ?>
+                                </button>
+                                <span class="aicg-load-models-result" id="aicg-load-models-result"></span>
                                 <div id="aicg-model-suggestions" class="aicg-model-suggestions">
                                     <p class="description" data-provider="openai" style="display:none;">
                                         <strong>OpenAI:</strong> gpt-4o, gpt-4o-mini, gpt-4-turbo, gpt-3.5-turbo

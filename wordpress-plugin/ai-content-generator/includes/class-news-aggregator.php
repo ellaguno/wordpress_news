@@ -142,6 +142,7 @@ class AICG_News_Aggregator {
             $content_parts = array('<div class="aicg-news-summary">');
 
             // Obtener titulares principales (necesarios para imagen aunque no se muestren)
+            do_action('aicg_progress', 10, __('Obteniendo titulares...', 'ai-content-generator'));
             $headlines = $this->fetch_main_headlines();
             $main_headlines = $headlines; // Guardar para generar imagen después
 
@@ -183,7 +184,19 @@ class AICG_News_Aggregator {
             // Recopilar noticias procesadas para extracción de imágenes OG
             $all_processed_news = array();
 
+            $topic_total = max(1, count($args['topics']));
+            $topic_index = 0;
+
             foreach ($args['topics'] as $topic) {
+                // Progreso real: repartir 20%-80% entre los temas procesados
+                $topic_percent = 20 + (int) (($topic_index / $topic_total) * 60);
+                do_action('aicg_progress', $topic_percent, sprintf(
+                    /* translators: %s: nombre del tema */
+                    __('Procesando: %s', 'ai-content-generator'),
+                    $topic
+                ));
+                $topic_index++;
+
                 AICG_Logger::debug('[AICG] Procesando tema: ' . $topic);
 
                 // Inicializar detalles del tema
@@ -508,6 +521,7 @@ class AICG_News_Aggregator {
             }
 
             // Crear post
+            do_action('aicg_progress', 90, __('Publicando...', 'ai-content-generator'));
             $post_id = $this->create_post($result, $args);
 
             if (is_wp_error($post_id)) {

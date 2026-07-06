@@ -17,6 +17,7 @@
             this.initTabs();
             this.initModelSuggestions();
             this.initSortableTopics();
+            this.initUnsavedWarning();
         },
 
         bindEvents: function() {
@@ -75,6 +76,67 @@
 
             // Toggle image sources visibility
             $(document).on('change', '#aicg_news_generate_image', this.toggleImageSources);
+
+            // Cargar modelos del proveedor seleccionado
+            $(document).on('click', '#aicg-load-models', this.loadModels);
+        },
+
+        initUnsavedWarning: function() {
+            const form = $('.aicg-settings-wrap form');
+            if (!form.length) {
+                return;
+            }
+            let initialState = form.serialize();
+
+            $(window).on('beforeunload', function() {
+                if (form.serialize() !== initialState) {
+                    return aicgAdmin.strings.unsavedChanges;
+                }
+            });
+
+            // No advertir al enviar el formulario (guardar)
+            form.on('submit', function() {
+                $(window).off('beforeunload');
+            });
+        },
+
+        loadModels: function(e) {
+            e.preventDefault();
+            const btn = $(this);
+            const provider = $('#aicg_text_provider').val();
+            const resultSpan = $('#aicg-load-models-result');
+
+            btn.prop('disabled', true);
+            resultSpan.removeClass('success error').text(aicgAdmin.strings.loadingModels);
+
+            $.ajax({
+                url: aicgAdmin.ajaxUrl,
+                type: 'POST',
+                data: {
+                    action: 'aicg_fetch_models',
+                    provider: provider,
+                    nonce: aicgAdmin.nonce
+                },
+                success: function(response) {
+                    if (response.success && response.data.models) {
+                        const datalist = $('#aicg_default_model_list').empty();
+                        response.data.models.forEach(function(model) {
+                            $('<option>').attr('value', model.id).text(model.name).appendTo(datalist);
+                        });
+                        resultSpan.addClass('success').text(
+                            '✓ ' + response.data.models.length + ' ' + aicgAdmin.strings.modelsLoaded
+                        );
+                    } else {
+                        resultSpan.addClass('error').text('✗ ' + (response.data || aicgAdmin.strings.error));
+                    }
+                },
+                error: function() {
+                    resultSpan.addClass('error').text('✗ ' + aicgAdmin.strings.error);
+                },
+                complete: function() {
+                    btn.prop('disabled', false);
+                }
+            });
         },
 
         initTabs: function() {
@@ -186,7 +248,7 @@
                     resultSpan.addClass('error').text('✗ ' + aicgAdmin.strings.connectionError);
                 },
                 complete: function() {
-                    btn.prop('disabled', false).text(aicgAdmin.strings.testingConnection.replace('...', ''));
+                    btn.prop('disabled', false).text(aicgAdmin.strings.testConnection);
                 }
             });
         },
@@ -198,16 +260,16 @@
 
             const row = `
                 <div class="aicg-news-topic-row aicg-sortable-item">
-                    <span class="aicg-drag-handle dashicons dashicons-menu" title="Arrastrar para reordenar"></span>
+                    <span class="aicg-drag-handle dashicons dashicons-menu" title="${aicgAdmin.strings.dragToReorder}"></span>
                     <input type="text"
                            name="aicg_news_topics[${index}][nombre]"
                            value=""
-                           placeholder="Nombre del tema"
+                           placeholder="${aicgAdmin.strings.topicName}"
                            class="regular-text aicg-topic-nombre">
                     <input type="url"
                            name="aicg_news_topics[${index}][imagen]"
                            value=""
-                           placeholder="URL de imagen (opcional)"
+                           placeholder="${aicgAdmin.strings.imageUrlOptional}"
                            class="regular-text aicg-topic-imagen">
                     <button type="button" class="button aicg-remove-topic">
                         <span class="dashicons dashicons-trash"></span>
@@ -231,7 +293,7 @@
             e.preventDefault();
 
             const frame = wp.media({
-                title: 'Seleccionar Marca de Agua',
+                title: aicgAdmin.strings.selectWatermark,
                 button: { text: 'Usar esta imagen' },
                 multiple: false,
                 library: { type: 'image' }
@@ -387,13 +449,13 @@
                     <input type="text"
                            name="aicg_news_sources[${index}][nombre]"
                            value=""
-                           placeholder="Nombre de la fuente"
+                           placeholder="${aicgAdmin.strings.sourceName}"
                            class="regular-text"
                            style="width: 200px;">
                     <input type="url"
                            name="aicg_news_sources[${index}][url]"
                            value=""
-                           placeholder="URL del feed RSS"
+                           placeholder="${aicgAdmin.strings.rssFeedUrl}"
                            class="regular-text"
                            style="flex: 1;">
                     <button type="button" class="button aicg-remove-source">
@@ -478,10 +540,27 @@
             $('#aicg_temperature_value').text($(this).val());
         },
 
+        // Validación cliente antes de enviar
+        validate: function(form) {
+            const min = parseInt(form.find('[name="min_words"]').val(), 10);
+            const max = parseInt(form.find('[name="max_words"]').val(), 10);
+            if (!isNaN(min) && !isNaN(max) && max < min) {
+                return aicgAdmin.strings.error + ': máx. palabras < mín. palabras';
+            }
+            return null;
+        },
+
         handleSubmit: function(e) {
             e.preventDefault();
 
             const form = $('#aicg-article-form');
+
+            const validationError = this.validate(form);
+            if (validationError) {
+                window.alert(validationError);
+                return;
+            }
+
             const formData = new FormData(form[0]);
             formData.append('action', 'aicg_generate_article');
             formData.append('nonce', aicgAdmin.nonce);
@@ -501,12 +580,10 @@
         generateArticle: function(formData) {
             const self = this;
 
-            // Simulate progress steps
-            this.updateProgress(1, aicgAdmin.strings.step1, 10);
+            this.updateProgress(aicgAdmin.strings.queued, 2);
 
-            setTimeout(() => this.updateProgress(2, aicgAdmin.strings.step2, 30), 1000);
-            setTimeout(() => this.updateProgress(3, aicgAdmin.strings.step3, 60), 3000);
-
+            // Encolar el trabajo; la generación corre en segundo plano y se
+            // sigue el progreso real por polling del estado del job.
             $.ajax({
                 url: aicgAdmin.ajaxUrl,
                 type: 'POST',
@@ -514,15 +591,22 @@
                 processData: false,
                 contentType: false,
                 success: function(response) {
-                    self.updateProgress(4, aicgAdmin.strings.step4, 90);
-
-                    setTimeout(function() {
-                        if (response.success) {
-                            self.showSuccess(response.data);
-                        } else {
-                            self.showError(response.data);
-                        }
-                    }, 500);
+                    if (response.success && response.data.job_id) {
+                        AICGJob.poll(response.data.job_id, {
+                            onProgress: function(state) {
+                                self.updateProgress(state.message, state.percent);
+                            },
+                            onDone: function(state) {
+                                self.updateProgress(state.message, 100);
+                                setTimeout(function() { self.showSuccess(state.result); }, 300);
+                            },
+                            onError: function(message) {
+                                self.showError(message);
+                            }
+                        });
+                    } else {
+                        self.showError(response.data || aicgAdmin.strings.error);
+                    }
                 },
                 error: function(xhr, status, error) {
                     self.showError(error || aicgAdmin.strings.error);
@@ -536,19 +620,23 @@
             $('#aicg-status-text').text(aicgAdmin.strings.generating);
         },
 
-        updateProgress: function(step, text, percent) {
-            // Mark previous steps as completed
-            for (let i = 1; i < step; i++) {
-                $(`#step-${['title', 'content', 'image', 'publish'][i - 1]}`).addClass('completed').removeClass('active');
-            }
-
-            // Mark current step as active
-            const stepId = ['title', 'content', 'image', 'publish'][step - 1];
-            $(`#step-${stepId}`).addClass('active');
-
-            // Update progress bar
+        updateProgress: function(text, percent) {
             $('#aicg-progress-fill').css('width', percent + '%');
             $('#aicg-status-text').text(text);
+
+            // Iluminar los pasos visuales según el progreso real
+            const steps = ['title', 'content', 'image', 'publish'];
+            const current = percent >= 90 ? 4 : (percent >= 55 ? 3 : (percent >= 25 ? 2 : 1));
+            steps.forEach(function(id, i) {
+                const $step = $('#step-' + id);
+                if (i < current - 1) {
+                    $step.addClass('completed').removeClass('active');
+                } else if (i === current - 1) {
+                    $step.addClass('active').removeClass('completed');
+                } else {
+                    $step.removeClass('active completed');
+                }
+            });
         },
 
         showSuccess: function(data) {
@@ -617,11 +705,7 @@
         generateNews: function(formData) {
             const self = this;
 
-            // Simulate progress
-            this.updateProgress(1, 'Obteniendo titulares...', 10);
-
-            setTimeout(() => this.updateProgress(2, 'Buscando noticias por tema...', 30), 1500);
-            setTimeout(() => this.updateProgress(3, 'Generando resúmenes...', 60), 4000);
+            this.updateProgress(aicgAdmin.strings.queued, 2);
 
             $.ajax({
                 url: aicgAdmin.ajaxUrl,
@@ -630,15 +714,22 @@
                 processData: false,
                 contentType: false,
                 success: function(response) {
-                    self.updateProgress(4, 'Publicando...', 90);
-
-                    setTimeout(function() {
-                        if (response.success) {
-                            self.showSuccess(response.data);
-                        } else {
-                            self.showError(response.data);
-                        }
-                    }, 500);
+                    if (response.success && response.data.job_id) {
+                        AICGJob.poll(response.data.job_id, {
+                            onProgress: function(state) {
+                                self.updateProgress(state.message, state.percent);
+                            },
+                            onDone: function(state) {
+                                self.updateProgress(state.message, 100);
+                                setTimeout(function() { self.showSuccess(state.result); }, 300);
+                            },
+                            onError: function(message) {
+                                self.showError(message);
+                            }
+                        });
+                    } else {
+                        self.showError(response.data || aicgAdmin.strings.error);
+                    }
                 },
                 error: function(xhr, status, error) {
                     self.showError(error || aicgAdmin.strings.error);
@@ -652,16 +743,23 @@
             $('#aicg-news-status-text').text(aicgAdmin.strings.generating);
         },
 
-        updateProgress: function(step, text, percent) {
-            const steps = ['headlines', 'topics', 'summary', 'publish'];
-
-            for (let i = 0; i < step - 1; i++) {
-                $(`#news-step-${steps[i]}`).addClass('completed').removeClass('active');
-            }
-
-            $(`#news-step-${steps[step - 1]}`).addClass('active');
+        updateProgress: function(text, percent) {
             $('#aicg-news-progress-fill').css('width', percent + '%');
             $('#aicg-news-status-text').text(text);
+
+            // Iluminar los pasos visuales según el progreso real
+            const steps = ['headlines', 'topics', 'summary', 'publish'];
+            const current = percent >= 90 ? 4 : (percent >= 55 ? 3 : (percent >= 15 ? 2 : 1));
+            steps.forEach(function(id, i) {
+                const $step = $('#news-step-' + id);
+                if (i < current - 1) {
+                    $step.addClass('completed').removeClass('active');
+                } else if (i === current - 1) {
+                    $step.addClass('active').removeClass('completed');
+                } else {
+                    $step.removeClass('active completed');
+                }
+            });
         },
 
         showSuccess: function(data) {
@@ -733,10 +831,10 @@
 
                     statsHtml += `
                         <tr style="${rowStyle}">
-                            <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${topic.name}</strong></td>
-                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${topic.news_count || 0}</td>
-                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${imagesInfo}</td>
-                            <td style="padding: 8px; border-bottom: 1px solid #eee;">${statusIcon} ${statusText}</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #eee;"><strong>${AICGJob.escapeHtml(topic.name)}</strong></td>
+                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${parseInt(topic.news_count || 0, 10)}</td>
+                            <td style="padding: 8px; text-align: center; border-bottom: 1px solid #eee;">${AICGJob.escapeHtml(imagesInfo)}</td>
+                            <td style="padding: 8px; border-bottom: 1px solid #eee;">${statusIcon} ${AICGJob.escapeHtml(statusText)}</td>
                         </tr>`;
                 });
 
@@ -756,6 +854,68 @@
             $('#aicg-news-result-area, #aicg-news-error-area, #aicg-news-progress-area').hide();
             $('#aicg-news-form').show()[0].reset();
             $('#aicg_select_all_topics').prop('checked', true).trigger('change');
+        }
+    };
+
+    /**
+     * Polling del estado de un trabajo en segundo plano
+     */
+    const AICGJob = {
+        // Intervalo de sondeo (ms) y nº máx. de intentos (~5 min a 3s)
+        INTERVAL: 3000,
+        MAX_ATTEMPTS: 100,
+
+        escapeHtml: function(str) {
+            return $('<div>').text(str == null ? '' : String(str)).html();
+        },
+
+        poll: function(jobId, callbacks) {
+            let attempts = 0;
+
+            const check = function() {
+                attempts++;
+
+                if (attempts > AICGJob.MAX_ATTEMPTS) {
+                    callbacks.onError(aicgAdmin.strings.timeout);
+                    return;
+                }
+
+                $.ajax({
+                    url: aicgAdmin.ajaxUrl,
+                    type: 'POST',
+                    data: {
+                        action: 'aicg_job_status',
+                        job_id: jobId,
+                        nonce: aicgAdmin.nonce
+                    },
+                    success: function(response) {
+                        if (!response.success) {
+                            callbacks.onError((response && response.data) || aicgAdmin.strings.error);
+                            return;
+                        }
+
+                        const state = response.data;
+
+                        if (state.status === 'done') {
+                            callbacks.onDone(state);
+                        } else if (state.status === 'error') {
+                            callbacks.onError(state.error || aicgAdmin.strings.error);
+                        } else {
+                            // queued o running: seguir sondeando
+                            if (state.message) {
+                                callbacks.onProgress(state);
+                            }
+                            setTimeout(check, AICGJob.INTERVAL);
+                        }
+                    },
+                    error: function() {
+                        // Error de red transitorio: reintentar hasta agotar intentos
+                        setTimeout(check, AICGJob.INTERVAL);
+                    }
+                });
+            };
+
+            setTimeout(check, AICGJob.INTERVAL);
         }
     };
 

@@ -4,7 +4,7 @@ Tags: ai, content, generator, openai, anthropic, deepseek, openrouter, articles,
 Requires at least: 5.8
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 2.9.0
+Stable tag: 2.10.0
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -107,6 +107,14 @@ Sí, el plugin genera HTML estándar compatible con cualquier tema.
 
 == Changelog ==
 
+= 2.10.0 =
+* Generación en segundo plano: la página ya no espera bloqueada; el trabajo se encola y corre vía cron, evitando timeouts en generaciones largas
+* Barra de progreso real (por polling del estado del trabajo) en vez de simulada
+* Dashboard accionable: próximas ejecuciones programadas, botón "Ejecutar ahora" y costo del mes en curso
+* Selector de modelos con autocompletado y botón "Cargar modelos" que consulta el catálogo del proveedor
+* Validación de mín./máx. de palabras y aviso de cambios sin guardar en Configuración
+* Corregido el texto del botón "Probar Conexión" tras la prueba; cadenas del JS internacionalizadas y escapadas
+
 = 2.9.0 =
 * Seguridad: filtros KSES (data: URIs) acotados al contenido del plugin, ya no se debilitan globalmente
 * Seguridad: las API keys ya no se imprimen completas en el HTML (patrón write-only con máscara)
@@ -134,6 +142,9 @@ Sí, el plugin genera HTML estándar compatible con cualquier tema.
 * Panel de administración completo
 
 == Upgrade Notice ==
+
+= 2.10.0 =
+La generación ahora corre en segundo plano con progreso real. Requiere que WP-Cron funcione en el sitio (activado por defecto). Dashboard con "Ejecutar ahora" y costo del mes.
 
 = 2.9.0 =
 Mejoras de seguridad (KSES acotado, API keys enmascaradas) y visibilidad de errores de la generación automática. La tabla de historial se migra automáticamente.

@@ -52,13 +52,22 @@ class AICG_Admin_Dashboard {
                 'success' => __('Completado con éxito', 'ai-content-generator'),
                 'error' => __('Error', 'ai-content-generator'),
                 'confirmDelete' => __('¿Estás seguro?', 'ai-content-generator'),
+                'testConnection' => __('Probar Conexión', 'ai-content-generator'),
                 'testingConnection' => __('Probando conexión...', 'ai-content-generator'),
                 'connectionSuccess' => __('Conexión exitosa', 'ai-content-generator'),
                 'connectionError' => __('Error de conexión', 'ai-content-generator'),
-                'step1' => __('Generando título...', 'ai-content-generator'),
-                'step2' => __('Escribiendo contenido...', 'ai-content-generator'),
-                'step3' => __('Generando imagen...', 'ai-content-generator'),
-                'step4' => __('Publicando...', 'ai-content-generator')
+                'queued' => __('En cola...', 'ai-content-generator'),
+                'timeout' => __('La generación está tardando más de lo esperado. Puede seguir ejecutándose en segundo plano; revisa el Historial en unos minutos.', 'ai-content-generator'),
+                'loadingModels' => __('Cargando...', 'ai-content-generator'),
+                'loadModels' => __('Cargar modelos', 'ai-content-generator'),
+                'modelsLoaded' => __('modelos cargados', 'ai-content-generator'),
+                'unsavedChanges' => __('Tienes cambios sin guardar. ¿Seguro que quieres salir?', 'ai-content-generator'),
+                'dragToReorder' => __('Arrastrar para reordenar', 'ai-content-generator'),
+                'topicName' => __('Nombre del tema', 'ai-content-generator'),
+                'imageUrlOptional' => __('URL de imagen (opcional)', 'ai-content-generator'),
+                'sourceName' => __('Nombre de la fuente', 'ai-content-generator'),
+                'rssFeedUrl' => __('URL del feed RSS', 'ai-content-generator'),
+                'selectWatermark' => __('Seleccionar Marca de Agua', 'ai-content-generator')
             )
         ));
 
@@ -101,41 +110,31 @@ class AICG_Admin_Dashboard {
             wp_send_json_error(__('No se especificó un tema', 'ai-content-generator'));
         }
 
+        // Validar min/max de palabras
+        $min_words = absint($_POST['min_words'] ?? 1500);
+        $max_words = absint($_POST['max_words'] ?? 2000);
+        if ($max_words < $min_words) {
+            wp_send_json_error(__('El máximo de palabras no puede ser menor que el mínimo', 'ai-content-generator'));
+        }
+
         // Parámetros de generación
         $args = array(
             'topic' => $topic,
             'category_id' => absint($_POST['category'] ?? 0),
             'post_status' => sanitize_text_field($_POST['post_status'] ?? 'draft'),
             'generate_image' => !empty($_POST['generate_image']),
-            'min_words' => absint($_POST['min_words'] ?? 1500),
-            'max_words' => absint($_POST['max_words'] ?? 2000),
+            'min_words' => $min_words,
+            'max_words' => $max_words,
             'sections' => absint($_POST['sections'] ?? 4),
             'temperature' => floatval($_POST['temperature'] ?? 0.7),
-            'post_author' => absint($_POST['post_author'] ?? 0)
+            // Resolver el autor ahora: el trabajo corre en cron sin usuario actual,
+            // así que "usuario actual" (0) debe fijarse al usuario que lo solicita
+            'post_author' => absint($_POST['post_author'] ?? 0) ?: get_current_user_id()
         );
 
-        // Generar artículo
-        $generator = new AICG_Article_Generator();
-        $result = $generator->generate($args);
-
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
-        }
-
-        // Respuesta exitosa
-        wp_send_json_success(array(
-            'post_id' => $result['post_id'],
-            'title' => $result['title'],
-            'topic' => $result['topic'],
-            'tokens_used' => $result['tokens_used'],
-            'cost' => number_format($result['cost'], 4),
-            'edit_url' => get_edit_post_link($result['post_id'], 'raw'),
-            'view_url' => get_permalink($result['post_id']),
-            'message' => sprintf(
-                __('Artículo "%s" generado exitosamente.', 'ai-content-generator'),
-                $result['title']
-            )
-        ));
+        // Encolar el trabajo y devolver el job_id (la generación corre en segundo plano)
+        $job_id = AICG_Background_Jobs::enqueue('article', $args);
+        wp_send_json_success(array('job_id' => $job_id));
     }
 
     /**
@@ -157,38 +156,78 @@ class AICG_Admin_Dashboard {
         $post_type = sanitize_text_field($_POST['post_type'] ?? 'post');
         $generate_image = !empty($_POST['generate_image']);
 
-        // Generar noticias
-        $aggregator = new AICG_News_Aggregator();
-        $result = $aggregator->generate(array(
+        // Encolar el trabajo y devolver el job_id (la generación corre en segundo plano)
+        $job_id = AICG_Background_Jobs::enqueue('news', array(
             'topics' => $topics,
             'include_headlines' => $include_headlines,
             'post_status' => $post_status,
             'post_type' => $post_type,
             'generate_image' => $generate_image,
-            'post_author' => absint($_POST['post_author'] ?? 0)
+            // Ver nota en ajax_generate_article sobre el autor y el contexto cron
+            'post_author' => absint($_POST['post_author'] ?? 0) ?: get_current_user_id()
         ));
+        wp_send_json_success(array('job_id' => $job_id));
+    }
 
-        if (is_wp_error($result)) {
-            wp_send_json_error($result->get_error_message());
+    /**
+     * AJAX: Consultar el estado de un trabajo en segundo plano (polling)
+     */
+    public function ajax_job_status() {
+        check_ajax_referer('aicg_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
-        // Respuesta exitosa
+        $job_id = sanitize_text_field($_POST['job_id'] ?? '');
+        $job = AICG_Background_Jobs::get($job_id);
+
+        if (!$job) {
+            // Aún no existe el transient o expiró: pedir al cliente que siga esperando
+            wp_send_json_success(array('status' => 'queued', 'percent' => 0, 'message' => ''));
+        }
+
         wp_send_json_success(array(
-            'post_id' => $result['post_id'],
-            'title' => $result['title'],
-            'news_count' => $result['news_count'],
-            'topics_processed' => $result['topics_processed'],
-            'topics_details' => isset($result['topics_details']) ? $result['topics_details'] : array(),
-            'tokens_used' => $result['tokens_used'],
-            'cost' => number_format($result['cost'], 4),
-            'edit_url' => get_edit_post_link($result['post_id'], 'raw'),
-            'view_url' => get_permalink($result['post_id']),
-            'message' => sprintf(
-                __('Resumen de noticias generado con %d noticias de %d temas.', 'ai-content-generator'),
-                $result['news_count'],
-                count($result['topics_processed'])
-            )
+            'status'  => $job['status'],
+            'percent' => isset($job['percent']) ? $job['percent'] : 0,
+            'message' => isset($job['message']) ? $job['message'] : '',
+            'result'  => isset($job['result']) ? $job['result'] : null,
+            'error'   => isset($job['error']) ? $job['error'] : null,
         ));
+    }
+
+    /**
+     * Ejecutar una generación programada manualmente ("Ejecutar ahora")
+     */
+    public function handle_run_now() {
+        check_admin_referer('aicg_run_now');
+
+        if (!current_user_can('manage_options')) {
+            wp_die(__('Sin permisos suficientes', 'ai-content-generator'));
+        }
+
+        $type = isset($_GET['type']) && $_GET['type'] === 'news' ? 'news' : 'article';
+
+        // Encolar como trabajo en segundo plano para no bloquear la respuesta
+        if ($type === 'news') {
+            AICG_Background_Jobs::enqueue('news', array(
+                'include_headlines' => true,
+                'post_status' => get_option('aicg_schedule_post_status', 'draft'),
+            ));
+        } else {
+            $topics = get_option('aicg_article_topics', array());
+            $topic = !empty($topics) ? $topics[array_rand($topics)] : '';
+            AICG_Background_Jobs::enqueue('article', array(
+                'topic' => $topic,
+                'post_status' => get_option('aicg_schedule_post_status', 'draft'),
+                'generate_image' => true,
+            ));
+        }
+
+        $referer = wp_get_referer();
+        $redirect = $referer ? add_query_arg('aicg_ran', $type, $referer) : admin_url('admin.php?page=aicg-dashboard');
+        wp_safe_redirect($redirect);
+        exit;
     }
 
     /**

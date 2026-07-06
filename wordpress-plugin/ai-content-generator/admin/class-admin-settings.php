@@ -563,4 +563,34 @@ class AICG_Admin_Settings {
 
         wp_send_json_success($result);
     }
+
+    /**
+     * AJAX: Obtener los modelos disponibles de un proveedor para el selector
+     */
+    public function ajax_fetch_models() {
+        check_ajax_referer('aicg_admin_nonce', 'nonce');
+
+        if (!current_user_can('manage_options')) {
+            wp_send_json_error(__('Sin permisos suficientes', 'ai-content-generator'));
+        }
+
+        $provider_name = sanitize_text_field($_POST['provider'] ?? '');
+        $provider = AICG_AI_Provider_Factory::create($provider_name);
+
+        if (is_wp_error($provider)) {
+            wp_send_json_error($provider->get_error_message());
+        }
+
+        // Los proveedores exponen su catálogo de modelos (id => metadatos)
+        $models = $provider->get_available_models();
+        $out = array();
+        foreach ($models as $id => $meta) {
+            $out[] = array(
+                'id'   => $id,
+                'name' => isset($meta['name']) ? $meta['name'] : $id,
+            );
+        }
+
+        wp_send_json_success(array('models' => $out));
+    }
 }

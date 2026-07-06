@@ -112,6 +112,7 @@ class AICG_Article_Generator {
 
         try {
             // Paso 1: Generar título
+            do_action('aicg_progress', 15, __('Generando título...', 'ai-content-generator'));
             $title_result = $this->generate_title($args['topic'], $args['temperature']);
             if (is_wp_error($title_result)) {
                 return $title_result;
@@ -121,6 +122,7 @@ class AICG_Article_Generator {
             $result['cost'] += $title_result['cost'];
 
             // Paso 2: Generar contenido
+            do_action('aicg_progress', 35, __('Escribiendo contenido...', 'ai-content-generator'));
             $content_result = $this->generate_content(
                 $args['topic'],
                 $result['title'],
@@ -138,6 +140,7 @@ class AICG_Article_Generator {
 
             // Paso 3: Generar imagen (opcional)
             if ($args['generate_image']) {
+                do_action('aicg_progress', 65, __('Generando imagen...', 'ai-content-generator'));
                 $image_result = $this->generate_and_upload_image($result['title'], $args['topic']);
                 if (!is_wp_error($image_result)) {
                     $result['image_id'] = $image_result['attachment_id'];
@@ -146,6 +149,7 @@ class AICG_Article_Generator {
             }
 
             // Paso 4: Crear post en WordPress
+            do_action('aicg_progress', 90, __('Publicando...', 'ai-content-generator'));
             $post_result = $this->create_post($result, $args);
             if (is_wp_error($post_result)) {
                 return $post_result;
