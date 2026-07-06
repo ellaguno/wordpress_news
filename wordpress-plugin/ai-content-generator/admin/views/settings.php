@@ -957,8 +957,8 @@ if (!defined('ABSPATH')) {
                                 ?>
                                 <p class="description">
                                     <?php
-                                    /* translators: %s: fecha y hora de la próxima ejecución programada */
                                     printf(
+                                        /* translators: %s: fecha y hora de la próxima ejecución programada */
                                         esc_html__('Próxima ejecución: %s', 'ai-content-generator'),
                                         esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_article))
                                     );
@@ -1015,8 +1015,8 @@ if (!defined('ABSPATH')) {
                                 <span class="description" style="margin-left: 10px;">
                                     <?php
                                     // Mostrar zona horaria actual
-                                    /* translators: %s: nombre de la zona horaria de WordPress */
                                     printf(
+                                        /* translators: %s: nombre de la zona horaria de WordPress */
                                         esc_html__('(Zona horaria: %s)', 'ai-content-generator'),
                                         esc_html($wp_tz->getName())
                                     );
@@ -1032,8 +1032,8 @@ if (!defined('ABSPATH')) {
                                 ?>
                                 <p class="description" style="margin-top: 10px; font-weight: bold;">
                                     <?php
-                                    /* translators: %s: fecha y hora de la próxima ejecución programada */
                                     printf(
+                                        /* translators: %s: fecha y hora de la próxima ejecución programada */
                                         esc_html__('Próxima ejecución: %s', 'ai-content-generator'),
                                         esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_news))
                                     );
@@ -1090,8 +1090,8 @@ if (!defined('ABSPATH')) {
                                 </label>
                                 <p class="description">
                                     <?php
-                                    /* translators: %s: dirección de correo de administración del sitio */
                                     printf(
+                                        /* translators: %s: dirección de correo de administración del sitio */
                                         esc_html__('Los emails se envían a %s (email de administración del sitio).', 'ai-content-generator'),
                                         esc_html(get_option('admin_email'))
                                     );

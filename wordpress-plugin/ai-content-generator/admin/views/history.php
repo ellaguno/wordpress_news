@@ -234,8 +234,8 @@ $stats = $wpdb->get_row("SELECT SUM(tokens_used) as total_tokens, SUM(cost) as t
             <div class="tablenav-pages">
                 <span class="displaying-num">
                     <?php
-                    /* translators: %s: número de elementos. */
                     printf(
+                        /* translators: %s: número de elementos. */
                         esc_html(_n('%s elemento', '%s elementos', $total_items, 'ai-content-generator')),
                         esc_html(number_format($total_items))
                     ); ?>

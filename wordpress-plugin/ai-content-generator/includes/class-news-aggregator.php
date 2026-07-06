@@ -1357,7 +1357,7 @@ EJEMPLO DE FORMATO:
 
         // URLs de los últimos 7 días. El nombre de tabla viene de $wpdb->prefix
         // (seguro) y la consulta no lleva input de usuario.
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
         $urls = $wpdb->get_col("SELECT url FROM {$table} WHERE used_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
 
         return $urls ?: array();
@@ -1386,7 +1386,7 @@ EJEMPLO DE FORMATO:
         }
 
         // Limpiar URLs antiguas (más de 30 días)
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
         $wpdb->query("DELETE FROM {$table} WHERE used_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
     }
 
@@ -1401,7 +1401,7 @@ EJEMPLO DE FORMATO:
         $table = $wpdb->prefix . 'aicg_used_urls';
 
         // Títulos de los últimos 14 días (más tiempo que URLs para evitar repetición)
-        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
         $titles = $wpdb->get_col("SELECT title_normalized FROM {$table} WHERE title_normalized IS NOT NULL AND used_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)");
 
         return $titles ?: array();
@@ -1428,7 +1428,7 @@ EJEMPLO DE FORMATO:
             // Actualizar el registro existente o crear uno nuevo
             if (!empty($url)) {
                 // Si ya existe la URL, actualizar el título
-                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia; nombre desde $wpdb->prefix, valor preparado con %s.
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia; nombre desde $wpdb->prefix, valor preparado con %s.
                 $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE url = %s", $url));
 
                 if ($existing) {
@@ -2116,7 +2116,9 @@ EJEMPLO DE FORMATO:
         // Verificar si ya existe esta imagen (evitar duplicados)
         $existing = get_posts(array(
             'post_type' => 'attachment',
+            // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_key -- Búsqueda puntual de deduplicación por hash; volumen bajo.
             'meta_key' => '_aicg_source_url_hash',
+            // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_value -- Búsqueda puntual de deduplicación por hash; volumen bajo.
             'meta_value' => $url_hash,
             'posts_per_page' => 1
         ));

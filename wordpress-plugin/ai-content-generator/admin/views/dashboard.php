@@ -51,8 +51,8 @@ $is_configured = !empty(get_option($api_key_option, ''));
         <p>
             <strong><?php esc_html_e('Configuración requerida:', 'ai-content-generator'); ?></strong>
             <?php
-            /* translators: %1$s: nombre del proveedor de IA. %2$s: etiqueta de apertura del enlace. %3$s: etiqueta de cierre del enlace. */
             printf(
+                /* translators: %1$s: nombre del proveedor de IA. %2$s: etiqueta de apertura del enlace. %3$s: etiqueta de cierre del enlace. */
                 esc_html__('Por favor, configura tu API Key de %1$s en la página de %2$sConfiguración%3$s.', 'ai-content-generator'),
                 esc_html(ucfirst($provider)),
                 '<a href="' . esc_url(admin_url('admin.php?page=aicg-settings')) . '">',
@@ -268,8 +268,8 @@ $is_configured = !empty(get_option($api_key_option, ''));
                 <td><?php esc_html_e('Últimos 7 días', 'ai-content-generator'); ?></td>
                 <td>
                     <?php
-                    /* translators: %d: número de publicaciones generadas. */
                     printf(
+                        /* translators: %d: número de publicaciones generadas. */
                         esc_html__('%d publicaciones generadas', 'ai-content-generator'),
                         intval($stats['last_7_days'])
                     ); ?>

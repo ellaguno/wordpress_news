@@ -3,7 +3,7 @@
  * Plugin Name: AI Content Generator
  * Plugin URI: https://github.com/sesolibre/ai-content-generator
  * Description: Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter)
- * Version: 2.10.1
+ * Version: 2.10.2
  * Requires at least: 5.8
  * Requires PHP: 7.4
  * Author: Eduardo Llaguno
@@ -20,7 +20,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Constantes del plugin
-define('AICG_VERSION', '2.10.1');
+define('AICG_VERSION', '2.10.2');
 define('AICG_DB_VERSION', '3');
 define('AICG_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('AICG_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -56,7 +56,6 @@ final class AI_Content_Generator {
      */
     private function __construct() {
         $this->load_dependencies();
-        $this->set_locale();
         $this->define_admin_hooks();
         $this->define_cron_hooks();
         $this->maybe_upgrade_database();
@@ -145,19 +144,6 @@ final class AI_Content_Generator {
 
         // Cron y programación
         require_once AICG_PLUGIN_DIR . 'includes/class-cron-scheduler.php';
-    }
-
-    /**
-     * Configurar localización
-     */
-    private function set_locale() {
-        add_action('plugins_loaded', function() {
-            load_plugin_textdomain(
-                'ai-content-generator',
-                false,
-                dirname(AICG_PLUGIN_BASENAME) . '/languages/'
-            );
-        });
     }
 
     /**

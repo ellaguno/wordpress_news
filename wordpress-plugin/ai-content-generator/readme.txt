@@ -2,164 +2,155 @@
 Contributors: ellaguno
 Tags: ai, content, generator, news, openai
 Requires at least: 5.8
-Tested up to: 6.9
+Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.10.1
+Stable tag: 2.10.2
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Genera artículos y resúmenes de noticias usando múltiples proveedores de IA (OpenAI, Anthropic, DeepSeek, OpenRouter).
+Generate articles and news summaries using multiple AI providers (OpenAI, Anthropic, DeepSeek, OpenRouter).
 
 == Description ==
 
-AI Content Generator es un plugin de WordPress que automatiza la generación de contenido utilizando inteligencia artificial. Soporta múltiples proveedores de IA y puede generar tanto artículos completos como resúmenes de noticias a partir de fuentes RSS.
+AI Content Generator is a WordPress plugin that automates content generation using artificial intelligence. It supports multiple AI providers and can generate both full articles and news summaries from RSS sources.
 
-= Características Principales =
+= Main Features =
 
-* **Múltiples Proveedores de IA:**
+* **Multiple AI providers:**
   * OpenAI (GPT-4o, GPT-3.5, DALL-E 3)
   * Anthropic (Claude Sonnet 4, Claude 3.5, Claude Haiku)
   * DeepSeek (DeepSeek Chat, DeepSeek Coder, DeepSeek R1)
-  * OpenRouter (Acceso a +100 modelos)
+  * OpenRouter (access to 100+ models)
 
-* **Generación de Artículos:**
-  * Títulos atractivos generados por IA
-  * Contenido HTML estructurado
-  * Imágenes generadas con DALL-E 3
-  * Marca de agua personalizable
-  * Asignación automática de categorías y tags
+* **Article generation:**
+  * AI-generated, attention-grabbing titles
+  * Structured HTML content
+  * Images generated with DALL-E 3
+  * Customizable watermark
+  * Automatic category and tag assignment
 
-* **Agregador de Noticias:**
-  * Obtención de noticias desde Google News
-  * Resúmenes generados por IA
-  * Deduplicación automática de URLs
-  * Referencias a fuentes originales
+* **News aggregator:**
+  * Fetches news from Google News
+  * AI-generated summaries
+  * Automatic URL deduplication
+  * References to original sources
 
-* **Programación Automática:**
-  * Generación programada de artículos
-  * Generación programada de noticias
-  * Frecuencias configurables (horaria, diaria, semanal)
+* **Automatic scheduling:**
+  * Scheduled article generation
+  * Scheduled news generation
+  * Configurable frequencies (hourly, daily, weekly)
+  * Background processing with real progress (no request timeouts)
 
-* **Panel de Administración:**
-  * Dashboard con estadísticas
-  * Historial de generaciones
-  * Seguimiento de tokens y costos
-  * Interfaz intuitiva
+* **Admin panel:**
+  * Dashboard with statistics and next scheduled runs
+  * Generation history with success/error status
+  * Token and cost tracking (including current-month cost)
+  * Intuitive interface
 
 == Installation ==
 
-1. Sube la carpeta `ai-content-generator` al directorio `/wp-content/plugins/`
-2. Activa el plugin a través del menú 'Plugins' en WordPress
-3. Ve a 'AI Content' → 'Configuración' para configurar tu API Key
-4. Configura los temas de artículos y noticias según tus necesidades
-
-== Configuration ==
-
-= API Keys =
-
-Necesitas al menos una API Key de cualquiera de los proveedores soportados:
-
-* **OpenAI:** https://platform.openai.com/api-keys
-* **Anthropic:** https://console.anthropic.com/settings/keys
-* **DeepSeek:** https://platform.deepseek.com/api_keys
-* **OpenRouter:** https://openrouter.ai/keys
-
-= Temas de Artículos =
-
-Configura una lista de temas (uno por línea) que se usarán para generar artículos. Ejemplos:
-* Inteligencia Artificial
-* Desarrollo Web
-* Ciberseguridad
-* Marketing Digital
-
-= Temas de Noticias =
-
-Configura los temas para el agregador de noticias con nombre e imagen opcional.
+1. Upload the `ai-content-generator` folder to the `/wp-content/plugins/` directory.
+2. Activate the plugin through the 'Plugins' menu in WordPress.
+3. Go to 'AI Content' → 'Settings' to configure your API key.
+4. Configure the article and news topics to fit your needs.
 
 == Frequently Asked Questions ==
 
-= ¿Cuánto cuesta usar este plugin? =
+= How much does it cost to use this plugin? =
 
-El plugin es gratuito, pero las APIs de IA tienen costos. Los costos varían según el proveedor:
-* OpenAI GPT-4o: ~$0.005/1K tokens entrada, ~$0.015/1K tokens salida
-* Anthropic Claude: ~$0.003/1K tokens entrada, ~$0.015/1K tokens salida
-* DeepSeek: ~$0.00014/1K tokens (muy económico)
+The plugin is free, but the AI APIs have costs. Costs vary by provider:
 
-= ¿Puedo usar múltiples proveedores? =
+* OpenAI GPT-4o: ~$0.005/1K input tokens, ~$0.015/1K output tokens
+* Anthropic Claude: ~$0.003/1K input tokens, ~$0.015/1K output tokens
+* DeepSeek: ~$0.00014/1K tokens (very economical)
 
-Sí, puedes configurar todos los proveedores y cambiar entre ellos según necesites.
+= Can I use multiple providers? =
 
-= ¿Los artículos se publican automáticamente? =
+Yes, you can configure all providers and switch between them as needed.
 
-Por defecto, los artículos se crean como borradores. Puedes configurar que se publiquen automáticamente.
+= Are articles published automatically? =
 
-= ¿Funciona con cualquier tema de WordPress? =
+By default, articles are created as drafts. You can configure automatic publishing.
 
-Sí, el plugin genera HTML estándar compatible con cualquier tema.
+= Does it work with any WordPress theme? =
+
+Yes, the plugin generates standard HTML compatible with any theme.
+
+= Does scheduled generation require anything special? =
+
+It relies on WP-Cron, which is enabled by default. Generation runs in the background and reports real progress; failures are recorded in the history and can be emailed to the admin.
 
 == Screenshots ==
 
-1. Dashboard principal con estadísticas
-2. Generador de artículos
-3. Generador de noticias
-4. Página de configuración
-5. Historial de generaciones
+1. Main dashboard with statistics
+2. Article generator
+3. News generator
+4. Settings page
+5. Generation history
 
 == Changelog ==
 
-= 2.10.1 =
-* Cumplimiento de los estándares de código de WordPress (Plugin Check): escapado de salida, wp_unslash en entradas, $wpdb->prepare y comentarios phpcs:ignore justificados en consultas a tablas propias
-* Funciones reemplazadas por sus equivalentes de WordPress (wp_strip_all_tags, wp_parse_url, wp_delete_file, gmdate)
-* i18n: comentarios "translators" y placeholders numerados
-* La columna title_normalized pasa al esquema versionado (dbDelta, DB v3); eliminados los ALTER TABLE en tiempo de ejecución
+= 2.10.2 =
+* WordPress Coding Standards / Plugin Check compliance: output escaping, wp_unslash on inputs, $wpdb->prepare and justified phpcs:ignore for custom-table queries
+* Discouraged functions replaced with WordPress equivalents (wp_strip_all_tags, wp_parse_url, wp_delete_file, gmdate)
+* i18n: translators comments and numbered placeholders
+* The title_normalized column moved to the versioned schema (dbDelta, DB v3); removed runtime ALTER TABLE statements
+* Removed discouraged load_plugin_textdomain() call (WordPress auto-loads translations since 4.6)
+* readme translated to English
 
 = 2.10.0 =
-* Generación en segundo plano: la página ya no espera bloqueada; el trabajo se encola y corre vía cron, evitando timeouts en generaciones largas
-* Barra de progreso real (por polling del estado del trabajo) en vez de simulada
-* Dashboard accionable: próximas ejecuciones programadas, botón "Ejecutar ahora" y costo del mes en curso
-* Selector de modelos con autocompletado y botón "Cargar modelos" que consulta el catálogo del proveedor
-* Validación de mín./máx. de palabras y aviso de cambios sin guardar en Configuración
-* Corregido el texto del botón "Probar Conexión" tras la prueba; cadenas del JS internacionalizadas y escapadas
+* Background generation: the page no longer blocks; the job is queued and runs via cron, avoiding timeouts on long generations
+* Real progress bar (via job-status polling) instead of a simulated one
+* Actionable dashboard: next scheduled runs, "Run now" button and current-month cost
+* Model selector with autocomplete and a "Load models" button that queries the provider catalog
+* Min/max word validation and unsaved-changes warning on the Settings page
+* Fixed the "Test Connection" button label after testing; JS strings internationalized and escaped
 
 = 2.9.0 =
-* Seguridad: filtros KSES (data: URIs) acotados al contenido del plugin, ya no se debilitan globalmente
-* Seguridad: las API keys ya no se imprimen completas en el HTML (patrón write-only con máscara)
-* Errores de la generación programada visibles en el Dashboard, con botón para limpiarlos
-* Notificaciones por email de la generación programada (con modo "solo errores")
-* El historial registra también los fallos (columna de estado y mensaje de error) y permite filtrarlos
-* Logging de depuración condicionado a WP_DEBUG; los volcados de respuestas se truncan
-* Eliminadas ~900 líneas de código muerto (regiones/mapas de Wikimedia, REST no registrado, Settings API duplicada)
-* Defaults de opciones centralizados (corrige divergencias entre activación y configuración)
+* Security: KSES filters (data: URIs) scoped to the plugin content instead of weakening wp_kses site-wide
+* Security: API keys are no longer printed in full in the HTML (write-only masked pattern)
+* Scheduled-generation errors visible on the Dashboard, with a button to clear them
+* Email notifications for scheduled generation (with an "errors only" mode)
+* History also records failures (status column and error message) and can filter by them
+* Debug logging gated behind WP_DEBUG; response dumps truncated
+* Removed ~900 lines of dead code (Wikimedia regions/maps, unregistered REST, duplicated Settings API)
+* Centralized option defaults (fixes divergences between activation and settings)
 
 = 2.8.8 =
-* El selector de autor se respeta al generar artículos y noticias
-* El modelo de texto configurado lo respetan los 4 proveedores; el historial registra el modelo real
-* Corregido fatal error potencial al crear categorías desde cron
-* Los fallos de wp_insert_post ya no pasan en silencio
-* Lock contra ejecuciones de cron solapadas (evita posts y gasto duplicados)
-* Anti-SSRF: validación de destinos y wp_safe_remote_get en feeds, og:image y descargas de imágenes
+* The author selector is respected when generating articles and news
+* The configured text model is honored by all 4 providers; history records the real model
+* Fixed a potential fatal error when creating categories from cron
+* wp_insert_post failures are no longer silent
+* Lock against overlapping cron runs (avoids duplicate posts and spend)
+* Anti-SSRF: destination validation and wp_safe_remote_get for feeds, og:image and image downloads
 
 = 1.0.0 =
-* Versión inicial
-* Soporte para OpenAI, Anthropic, DeepSeek y OpenRouter
-* Generación de artículos con imágenes
-* Agregador de noticias RSS
-* Programación automática con WP-Cron
-* Panel de administración completo
+* Initial release
+* Support for OpenAI, Anthropic, DeepSeek and OpenRouter
+* Article generation with images
+* RSS news aggregator
+* Automatic scheduling with WP-Cron
+* Complete admin panel
 
 == Upgrade Notice ==
 
+= 2.10.2 =
+WordPress Plugin Check compliance and English readme. The history table migrates automatically.
+
 = 2.10.0 =
-La generación ahora corre en segundo plano con progreso real. Requiere que WP-Cron funcione en el sitio (activado por defecto). Dashboard con "Ejecutar ahora" y costo del mes.
+Generation now runs in the background with real progress. Requires WP-Cron to be working on the site (enabled by default). Dashboard with "Run now" and monthly cost.
 
 = 2.9.0 =
-Mejoras de seguridad (KSES acotado, API keys enmascaradas) y visibilidad de errores de la generación automática. La tabla de historial se migra automáticamente.
+Security improvements (scoped KSES, masked API keys) and visibility of automatic-generation errors. The history table migrates automatically.
 
 == Privacy Policy ==
 
-Este plugin envía datos a APIs externas de IA (OpenAI, Anthropic, DeepSeek, OpenRouter) según el proveedor configurado. Los prompts y contenido generado son procesados por estos servicios. Consulta las políticas de privacidad de cada proveedor.
+This plugin sends data to external AI APIs (OpenAI, Anthropic, DeepSeek, OpenRouter) depending on the configured provider. Prompts and generated content are processed by those services. Please review each provider's privacy policy.
 
-El plugin almacena localmente:
-* Configuración y API Keys (en la tabla de opciones de WordPress; protege el acceso a tu base de datos)
-* Historial de generaciones
-* URLs de noticias usadas
+The plugin stores locally:
+
+* Settings and API keys (in the WordPress options table; protect access to your database)
+* Generation history
+* Used news URLs
+
+Note: the plugin's user interface is currently in Spanish.

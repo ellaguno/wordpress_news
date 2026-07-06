@@ -25,8 +25,8 @@ $news_topics = get_option('aicg_news_topics', array());
     <div class="notice notice-warning">
         <p>
             <?php
-            /* translators: 1: etiqueta de apertura del enlace, 2: etiqueta de cierre del enlace */
             printf(
+                /* translators: 1: etiqueta de apertura del enlace, 2: etiqueta de cierre del enlace */
                 esc_html__('No hay temas de noticias configurados. %1$sConfigura los temas%2$s para generar resúmenes.', 'ai-content-generator'),
                 '<a href="' . esc_url(admin_url('admin.php?page=aicg-settings#news-settings')) . '">',
                 '</a>'
@@ -183,8 +183,8 @@ $news_topics = get_option('aicg_news_topics', array());
                         <li>
                             <span class="dashicons dashicons-rss"></span>
                             <?php
-                            /* translators: %s: nombre del tema de búsqueda */
                             printf(
+                                /* translators: %s: nombre del tema de búsqueda */
                                 esc_html__('Google News - Búsqueda: "%s"', 'ai-content-generator'),
                                 esc_html($topic['nombre'])
                             );
