@@ -40,7 +40,8 @@ class AICG_AI_Provider_Factory {
             return new WP_Error(
                 'invalid_provider',
                 sprintf(
-                    __('Proveedor de IA no válido: %s. Proveedores disponibles: %s', 'ai-content-generator'),
+                    /* translators: 1: nombre del proveedor solicitado, 2: lista de proveedores disponibles */
+                    __('Proveedor de IA no válido: %1$s. Proveedores disponibles: %2$s', 'ai-content-generator'),
                     $provider_name,
                     implode(', ', array_keys(self::$providers))
                 )
@@ -52,6 +53,7 @@ class AICG_AI_Provider_Factory {
         if (!class_exists($class_name)) {
             return new WP_Error(
                 'class_not_found',
+                /* translators: %s: nombre de la clase del proveedor */
                 sprintf(__('Clase del proveedor no encontrada: %s', 'ai-content-generator'), $class_name)
             );
         }

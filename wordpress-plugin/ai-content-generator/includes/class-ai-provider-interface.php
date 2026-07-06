@@ -150,6 +150,7 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
         if ($status_code >= 400) {
             $error_message = isset($data['error']['message'])
                 ? $data['error']['message']
+                /* translators: %d: código de estado HTTP */
                 : sprintf(__('Error HTTP %d', 'ai-content-generator'), $status_code);
 
             return new WP_Error('api_error', $error_message, array('status' => $status_code));

@@ -156,7 +156,8 @@ class AICG_Cron_Scheduler {
 
             // Log de éxito
             $this->log_success('article', sprintf(
-                __('Artículo generado: "%s" (Post ID: %d)', 'ai-content-generator'),
+                /* translators: 1: título del artículo, 2: ID del post */
+                __('Artículo generado: "%1$s" (Post ID: %2$d)', 'ai-content-generator'),
                 $result['title'],
                 $result['post_id']
             ));
@@ -215,7 +216,8 @@ class AICG_Cron_Scheduler {
 
             // Log de éxito
             $this->log_success('news', sprintf(
-                __('Resumen de noticias generado (Post ID: %d, Noticias: %d)', 'ai-content-generator'),
+                /* translators: 1: ID del post, 2: número de noticias */
+                __('Resumen de noticias generado (Post ID: %1$d, Noticias: %2$d)', 'ai-content-generator'),
                 $result['post_id'],
                 $result['news_count']
             ));
@@ -326,7 +328,7 @@ class AICG_Cron_Scheduler {
         // Si es cada hora, ejecutar en la próxima hora
         if ($frequency === 'hourly') {
             $next = strtotime('+1 hour');
-            return strtotime(date('Y-m-d H:00:00', $next));
+            return strtotime(gmdate('Y-m-d H:00:00', $next));
         }
 
         // Obtener la hora configurada
@@ -392,11 +394,13 @@ class AICG_Cron_Scheduler {
         // Notificar el fallo por email si está habilitado
         if (get_option('aicg_notify_admin', false)) {
             $subject = sprintf(
+                /* translators: %s: nombre del sitio */
                 __('[%s] Error en la generación automática de contenido', 'ai-content-generator'),
                 get_bloginfo('name')
             );
             $body = sprintf(
-                __("Falló una tarea programada del plugin AI Content Generator.\n\nTipo: %s\nError: %s\nFecha: %s\n\nRevisa el dashboard del plugin: %s", 'ai-content-generator'),
+                /* translators: 1: tipo de tarea, 2: mensaje de error, 3: fecha, 4: URL del dashboard */
+                __("Falló una tarea programada del plugin AI Content Generator.\n\nTipo: %1\$s\nError: %2\$s\nFecha: %3\$s\n\nRevisa el dashboard del plugin: %4\$s", 'ai-content-generator'),
                 $type === 'article' ? __('Artículo', 'ai-content-generator') : __('Noticias', 'ai-content-generator'),
                 $message,
                 current_time('mysql'),
@@ -442,11 +446,13 @@ class AICG_Cron_Scheduler {
 
         if ($type === 'article') {
             $subject = sprintf(
+                /* translators: %s: nombre del sitio */
                 __('[%s] Nuevo artículo generado automáticamente', 'ai-content-generator'),
                 $site_name
             );
             $message = sprintf(
-                __("Se ha generado un nuevo artículo automáticamente:\n\nTítulo: %s\nTema: %s\nTokens usados: %d\nCosto estimado: $%s\n\nEditar: %s", 'ai-content-generator'),
+                /* translators: 1: título, 2: tema, 3: tokens usados, 4: costo estimado, 5: URL de edición */
+                __("Se ha generado un nuevo artículo automáticamente:\n\nTítulo: %1\$s\nTema: %2\$s\nTokens usados: %3\$d\nCosto estimado: \$%4\$s\n\nEditar: %5\$s", 'ai-content-generator'),
                 $result['title'],
                 $result['topic'],
                 $result['tokens_used'],
@@ -455,11 +461,13 @@ class AICG_Cron_Scheduler {
             );
         } else {
             $subject = sprintf(
+                /* translators: %s: nombre del sitio */
                 __('[%s] Nuevo resumen de noticias generado', 'ai-content-generator'),
                 $site_name
             );
             $message = sprintf(
-                __("Se ha generado un nuevo resumen de noticias:\n\nTemas: %s\nNoticias procesadas: %d\nTokens usados: %d\nCosto estimado: $%s\n\nEditar: %s", 'ai-content-generator'),
+                /* translators: 1: temas, 2: noticias procesadas, 3: tokens usados, 4: costo estimado, 5: URL de edición */
+                __("Se ha generado un nuevo resumen de noticias:\n\nTemas: %1\$s\nNoticias procesadas: %2\$d\nTokens usados: %3\$d\nCosto estimado: \$%4\$s\n\nEditar: %5\$s", 'ai-content-generator'),
                 implode(', ', $result['topics_processed']),
                 $result['news_count'],
                 $result['tokens_used'],

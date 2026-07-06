@@ -262,7 +262,7 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
         }
 
         if (!$image_url) {
-            AICG_Logger::debug('[AICG] OpenAI image response: ' . substr(print_r($response, true), 0, 500));
+            AICG_Logger::debug('[AICG] OpenAI image response: ' . substr(print_r($response, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
             return new WP_Error('invalid_response', __('Respuesta inválida de generación de imagen', 'ai-content-generator'));
         }
 

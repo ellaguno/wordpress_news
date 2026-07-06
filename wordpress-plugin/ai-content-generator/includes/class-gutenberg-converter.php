@@ -199,7 +199,7 @@ class AICG_Gutenberg_Converter {
                 }
 
                 $outerHTML = $dom->saveHTML($node);
-                if (!empty(trim(strip_tags($outerHTML)))) {
+                if (!empty(trim(wp_strip_all_tags($outerHTML)))) {
                     return self::wrap_as_html_block($outerHTML);
                 }
                 return '';
@@ -470,7 +470,7 @@ class AICG_Gutenberg_Converter {
 
         // Si no hay bloques internos pero hay contenido, envolver como HTML
         $outerHTML = $dom->saveHTML($node);
-        if (!empty(trim(strip_tags($outerHTML)))) {
+        if (!empty(trim(wp_strip_all_tags($outerHTML)))) {
             return self::wrap_as_html_block(self::decode_html($outerHTML));
         }
 

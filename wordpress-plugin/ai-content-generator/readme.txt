@@ -1,10 +1,10 @@
 === AI Content Generator ===
 Contributors: ellaguno
-Tags: ai, content, generator, openai, anthropic, deepseek, openrouter, articles, news
+Tags: ai, content, generator, news, openai
 Requires at least: 5.8
-Tested up to: 6.8
+Tested up to: 6.9
 Requires PHP: 7.4
-Stable tag: 2.10.0
+Stable tag: 2.10.1
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -106,6 +106,12 @@ Sí, el plugin genera HTML estándar compatible con cualquier tema.
 5. Historial de generaciones
 
 == Changelog ==
+
+= 2.10.1 =
+* Cumplimiento de los estándares de código de WordPress (Plugin Check): escapado de salida, wp_unslash en entradas, $wpdb->prepare y comentarios phpcs:ignore justificados en consultas a tablas propias
+* Funciones reemplazadas por sus equivalentes de WordPress (wp_strip_all_tags, wp_parse_url, wp_delete_file, gmdate)
+* i18n: comentarios "translators" y placeholders numerados
+* La columna title_normalized pasa al esquema versionado (dbDelta, DB v3); eliminados los ALTER TABLE en tiempo de ejecución
 
 = 2.10.0 =
 * Generación en segundo plano: la página ya no espera bloqueada; el trabajo se encola y corre vía cron, evitando timeouts en generaciones largas

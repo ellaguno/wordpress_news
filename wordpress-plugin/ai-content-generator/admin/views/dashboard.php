@@ -10,16 +10,24 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Estas variables son locales al método que incluye esta plantilla, no globales.
+
 // Obtener estadísticas
 global $wpdb;
 $table_history = $wpdb->prefix . 'aicg_history';
 
 $stats = array(
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'total_articles' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'article' AND status = 'success'"),
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'total_news' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE type = 'news' AND status = 'success'"),
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'total_tokens' => $wpdb->get_var("SELECT SUM(tokens_used) FROM $table_history"),
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'total_cost' => $wpdb->get_var("SELECT SUM(cost) FROM $table_history"),
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'last_7_days' => $wpdb->get_var("SELECT COUNT(*) FROM $table_history WHERE created_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"),
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
     'month_cost' => $wpdb->get_var("SELECT SUM(cost) FROM $table_history WHERE created_at >= DATE_FORMAT(NOW(), '%Y-%m-01')")
 );
 
@@ -42,10 +50,12 @@ $is_configured = !empty(get_option($api_key_option, ''));
     <div class="notice notice-warning">
         <p>
             <strong><?php esc_html_e('Configuración requerida:', 'ai-content-generator'); ?></strong>
-            <?php printf(
-                esc_html__('Por favor, configura tu API Key de %s en la página de %sConfiguración%s.', 'ai-content-generator'),
-                ucfirst($provider),
-                '<a href="' . admin_url('admin.php?page=aicg-settings') . '">',
+            <?php
+            /* translators: %1$s: nombre del proveedor de IA. %2$s: etiqueta de apertura del enlace. %3$s: etiqueta de cierre del enlace. */
+            printf(
+                esc_html__('Por favor, configura tu API Key de %1$s en la página de %2$sConfiguración%3$s.', 'ai-content-generator'),
+                esc_html(ucfirst($provider)),
+                '<a href="' . esc_url(admin_url('admin.php?page=aicg-settings')) . '">',
                 '</a>'
             ); ?>
         </p>
@@ -78,6 +88,7 @@ $is_configured = !empty(get_option($api_key_option, ''));
     </div>
     <?php endif; ?>
 
+    <?php // phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de listado de solo lectura, sin acción que cambie estado. ?>
     <?php if (isset($_GET['aicg_ran'])) : ?>
     <div class="notice notice-success is-dismissible">
         <p>
@@ -181,25 +192,25 @@ $is_configured = !empty(get_option($api_key_option, ''));
         <h2><?php esc_html_e('Acciones Rápidas', 'ai-content-generator'); ?></h2>
 
         <div class="aicg-actions-grid">
-            <a href="<?php echo admin_url('admin.php?page=aicg-generate-article'); ?>" class="aicg-action-card">
+            <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-generate-article')); ?>" class="aicg-action-card">
                 <span class="dashicons dashicons-welcome-write-blog"></span>
                 <h3><?php esc_html_e('Generar Artículo', 'ai-content-generator'); ?></h3>
                 <p><?php esc_html_e('Crea un artículo completo con título, contenido e imagen.', 'ai-content-generator'); ?></p>
             </a>
 
-            <a href="<?php echo admin_url('admin.php?page=aicg-generate-news'); ?>" class="aicg-action-card">
+            <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-generate-news')); ?>" class="aicg-action-card">
                 <span class="dashicons dashicons-rss"></span>
                 <h3><?php esc_html_e('Generar Noticias', 'ai-content-generator'); ?></h3>
                 <p><?php esc_html_e('Crea un resumen de noticias del día usando fuentes RSS.', 'ai-content-generator'); ?></p>
             </a>
 
-            <a href="<?php echo admin_url('admin.php?page=aicg-settings'); ?>" class="aicg-action-card">
+            <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-settings')); ?>" class="aicg-action-card">
                 <span class="dashicons dashicons-admin-generic"></span>
                 <h3><?php esc_html_e('Configuración', 'ai-content-generator'); ?></h3>
                 <p><?php esc_html_e('Configura proveedores de IA, modelos y preferencias.', 'ai-content-generator'); ?></p>
             </a>
 
-            <a href="<?php echo admin_url('admin.php?page=aicg-history'); ?>" class="aicg-action-card">
+            <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-history')); ?>" class="aicg-action-card">
                 <span class="dashicons dashicons-backup"></span>
                 <h3><?php esc_html_e('Historial', 'ai-content-generator'); ?></h3>
                 <p><?php esc_html_e('Ver el historial de contenido generado.', 'ai-content-generator'); ?></p>
@@ -256,7 +267,9 @@ $is_configured = !empty(get_option($api_key_option, ''));
             <tr>
                 <td><?php esc_html_e('Últimos 7 días', 'ai-content-generator'); ?></td>
                 <td>
-                    <?php printf(
+                    <?php
+                    /* translators: %d: número de publicaciones generadas. */
+                    printf(
                         esc_html__('%d publicaciones generadas', 'ai-content-generator'),
                         intval($stats['last_7_days'])
                     ); ?>
@@ -267,9 +280,8 @@ $is_configured = !empty(get_option($api_key_option, ''));
 
     <!-- Últimas generaciones -->
     <?php
-    $recent = $wpdb->get_results(
-        "SELECT * FROM $table_history ORDER BY created_at DESC LIMIT 5"
-    );
+    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
+    $recent = $wpdb->get_results( "SELECT * FROM $table_history ORDER BY created_at DESC LIMIT 5" );
     ?>
 
     <?php if (!empty($recent)) : ?>
@@ -307,7 +319,7 @@ $is_configured = !empty(get_option($api_key_option, ''));
                     <td>$<?php echo number_format($item->cost, 4); ?></td>
                     <td>
                         <?php if ($item->post_id) : ?>
-                            <a href="<?php echo get_edit_post_link($item->post_id); ?>" target="_blank">
+                            <a href="<?php echo esc_url(get_edit_post_link($item->post_id)); ?>" target="_blank">
                                 #<?php echo intval($item->post_id); ?>
                             </a>
                         <?php else : ?>
@@ -320,7 +332,7 @@ $is_configured = !empty(get_option($api_key_option, ''));
         </table>
 
         <p>
-            <a href="<?php echo admin_url('admin.php?page=aicg-history'); ?>" class="button">
+            <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-history')); ?>" class="button">
                 <?php esc_html_e('Ver Historial Completo', 'ai-content-generator'); ?>
             </a>
         </p>

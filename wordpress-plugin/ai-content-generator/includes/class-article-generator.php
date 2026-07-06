@@ -467,6 +467,7 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
     private function log_generation($result, $args) {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Tabla propia del plugin; inserción en historial sin input de usuario sin preparar.
         $wpdb->insert(
             $wpdb->prefix . 'aicg_history',
             array(
@@ -496,6 +497,7 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
         $provider_name = is_wp_error($this->provider) ? '-' : $this->provider->get_name();
         $model = is_wp_error($this->provider) ? '-' : $this->provider->get_default_text_model();
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Tabla propia del plugin; inserción en historial sin input de usuario sin preparar.
         $wpdb->insert(
             $wpdb->prefix . 'aicg_history',
             array(

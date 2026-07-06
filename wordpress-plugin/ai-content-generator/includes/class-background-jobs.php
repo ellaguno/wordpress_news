@@ -102,7 +102,7 @@ class AICG_Background_Jobs {
         wp_remote_post($url, array(
             'timeout'   => 0.01,
             'blocking'  => false,
-            'sslverify' => apply_filters('https_local_ssl_verify', false),
+            'sslverify' => apply_filters('https_local_ssl_verify', false), // phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedHooknameFound -- Filtro del núcleo de WordPress, no un hook propio del plugin.
         ));
     }
 
@@ -199,6 +199,7 @@ class AICG_Background_Jobs {
         if ($type === 'article') {
             $common['topic'] = isset($result['topic']) ? $result['topic'] : '';
             $common['message'] = sprintf(
+                /* translators: %s: título del artículo */
                 __('Artículo "%s" generado exitosamente.', 'ai-content-generator'),
                 $common['title']
             );
@@ -207,7 +208,8 @@ class AICG_Background_Jobs {
             $common['topics_processed'] = isset($result['topics_processed']) ? $result['topics_processed'] : array();
             $common['topics_details'] = isset($result['topics_details']) ? $result['topics_details'] : array();
             $common['message'] = sprintf(
-                __('Resumen de noticias generado con %d noticias de %d temas.', 'ai-content-generator'),
+                /* translators: 1: número de noticias, 2: número de temas */
+                __('Resumen de noticias generado con %1$d noticias de %2$d temas.', 'ai-content-generator'),
                 $common['news_count'],
                 count($common['topics_processed'])
             );

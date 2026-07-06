@@ -9,6 +9,8 @@
 if (!defined('ABSPATH')) {
     exit;
 }
+
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Estas variables son locales al método que incluye esta plantilla, no globales.
 ?>
 
 <div class="wrap aicg-settings-wrap">
@@ -325,12 +327,12 @@ if (!defined('ABSPATH')) {
                                         <div class="aicg-news-topic-row aicg-sortable-item">
                                             <span class="aicg-drag-handle dashicons dashicons-menu" title="<?php esc_attr_e('Arrastrar para reordenar', 'ai-content-generator'); ?>"></span>
                                             <input type="text"
-                                                   name="aicg_news_topics[<?php echo $index; ?>][nombre]"
+                                                   name="aicg_news_topics[<?php echo esc_attr($index); ?>][nombre]"
                                                    value="<?php echo esc_attr($topic['nombre']); ?>"
                                                    placeholder="<?php esc_attr_e('Nombre del tema', 'ai-content-generator'); ?>"
                                                    class="regular-text aicg-topic-nombre">
                                             <input type="url"
-                                                   name="aicg_news_topics[<?php echo $index; ?>][imagen]"
+                                                   name="aicg_news_topics[<?php echo esc_attr($index); ?>][imagen]"
                                                    value="<?php echo esc_attr(isset($topic['imagen']) ? $topic['imagen'] : ''); ?>"
                                                    placeholder="<?php esc_attr_e('URL de imagen (opcional)', 'ai-content-generator'); ?>"
                                                    class="regular-text aicg-topic-imagen">
@@ -389,18 +391,18 @@ if (!defined('ABSPATH')) {
                                         <div class="aicg-news-source-row" style="display: flex; gap: 10px; align-items: center; margin-bottom: 10px; padding: 10px; background: #f9f9f9; border-radius: 4px;">
                                             <label style="display: flex; align-items: center;">
                                                 <input type="checkbox"
-                                                       name="aicg_news_sources[<?php echo $index; ?>][activo]"
+                                                       name="aicg_news_sources[<?php echo esc_attr($index); ?>][activo]"
                                                        value="1"
                                                        <?php checked(isset($source['activo']) ? $source['activo'] : true); ?>>
                                             </label>
                                             <input type="text"
-                                                   name="aicg_news_sources[<?php echo $index; ?>][nombre]"
+                                                   name="aicg_news_sources[<?php echo esc_attr($index); ?>][nombre]"
                                                    value="<?php echo esc_attr($source['nombre']); ?>"
                                                    placeholder="<?php esc_attr_e('Nombre de la fuente', 'ai-content-generator'); ?>"
                                                    class="regular-text"
                                                    style="width: 200px;">
                                             <input type="url"
-                                                   name="aicg_news_sources[<?php echo $index; ?>][url]"
+                                                   name="aicg_news_sources[<?php echo esc_attr($index); ?>][url]"
                                                    value="<?php echo esc_attr($source['url']); ?>"
                                                    placeholder="<?php esc_attr_e('URL del feed RSS', 'ai-content-generator'); ?>"
                                                    class="regular-text"
@@ -707,6 +709,7 @@ if (!defined('ABSPATH')) {
                                             'posts_per_page' => 50,
                                             'orderby' => 'modified',
                                             'order' => 'DESC',
+                                            // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Consulta puntual en el admin para poblar un selector de posts.
                                             'meta_query' => array(
                                                 array(
                                                     'key' => '_aicg_type',
@@ -953,10 +956,13 @@ if (!defined('ABSPATH')) {
                                 if ($next_article) :
                                 ?>
                                 <p class="description">
-                                    <?php printf(
+                                    <?php
+                                    /* translators: %s: fecha y hora de la próxima ejecución programada */
+                                    printf(
                                         esc_html__('Próxima ejecución: %s', 'ai-content-generator'),
-                                        date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_article)
-                                    ); ?>
+                                        esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_article))
+                                    );
+                                    ?>
                                 </p>
                                 <?php endif; ?>
                             </td>
@@ -1009,9 +1015,10 @@ if (!defined('ABSPATH')) {
                                 <span class="description" style="margin-left: 10px;">
                                     <?php
                                     // Mostrar zona horaria actual
+                                    /* translators: %s: nombre de la zona horaria de WordPress */
                                     printf(
                                         esc_html__('(Zona horaria: %s)', 'ai-content-generator'),
-                                        $wp_tz->getName()
+                                        esc_html($wp_tz->getName())
                                     );
                                     ?>
                                 </span>
@@ -1024,10 +1031,13 @@ if (!defined('ABSPATH')) {
                                 if ($next_news) :
                                 ?>
                                 <p class="description" style="margin-top: 10px; font-weight: bold;">
-                                    <?php printf(
+                                    <?php
+                                    /* translators: %s: fecha y hora de la próxima ejecución programada */
+                                    printf(
                                         esc_html__('Próxima ejecución: %s', 'ai-content-generator'),
-                                        date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_news)
-                                    ); ?>
+                                        esc_html(date_i18n(get_option('date_format') . ' ' . get_option('time_format'), $next_news))
+                                    );
+                                    ?>
                                 </p>
                                 <?php endif; ?>
                             </td>
@@ -1079,10 +1089,13 @@ if (!defined('ABSPATH')) {
                                     <?php esc_html_e('Notificar solo cuando haya errores', 'ai-content-generator'); ?>
                                 </label>
                                 <p class="description">
-                                    <?php printf(
+                                    <?php
+                                    /* translators: %s: dirección de correo de administración del sitio */
+                                    printf(
                                         esc_html__('Los emails se envían a %s (email de administración del sitio).', 'ai-content-generator'),
                                         esc_html(get_option('admin_email'))
-                                    ); ?>
+                                    );
+                                    ?>
                                 </p>
                             </td>
                         </tr>

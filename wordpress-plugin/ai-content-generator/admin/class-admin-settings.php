@@ -548,7 +548,7 @@ class AICG_Admin_Settings {
             wp_send_json_error(__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
-        $provider_name = sanitize_text_field($_POST['provider']);
+        $provider_name = sanitize_text_field(wp_unslash($_POST['provider'] ?? ''));
         $provider = AICG_AI_Provider_Factory::create($provider_name);
 
         if (is_wp_error($provider)) {
@@ -574,7 +574,7 @@ class AICG_Admin_Settings {
             wp_send_json_error(__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
-        $provider_name = sanitize_text_field($_POST['provider'] ?? '');
+        $provider_name = sanitize_text_field(wp_unslash($_POST['provider'] ?? ''));
         $provider = AICG_AI_Provider_Factory::create($provider_name);
 
         if (is_wp_error($provider)) {

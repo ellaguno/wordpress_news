@@ -90,19 +90,19 @@ class AICG_Admin_Dashboard {
         }
 
         // Obtener parámetros
-        $topic_type = sanitize_text_field($_POST['topic_type'] ?? 'preset');
+        $topic_type = sanitize_text_field(wp_unslash($_POST['topic_type'] ?? 'preset'));
         $topic = '';
 
         switch ($topic_type) {
             case 'preset':
-                $topic = sanitize_text_field($_POST['preset_topic'] ?? '');
+                $topic = sanitize_text_field(wp_unslash($_POST['preset_topic'] ?? ''));
                 break;
             case 'random':
                 $topics = get_option('aicg_article_topics', array());
                 $topic = !empty($topics) ? $topics[array_rand($topics)] : '';
                 break;
             case 'custom':
-                $topic = sanitize_text_field($_POST['custom_topic'] ?? '');
+                $topic = sanitize_text_field(wp_unslash($_POST['custom_topic'] ?? ''));
                 break;
         }
 
@@ -121,7 +121,7 @@ class AICG_Admin_Dashboard {
         $args = array(
             'topic' => $topic,
             'category_id' => absint($_POST['category'] ?? 0),
-            'post_status' => sanitize_text_field($_POST['post_status'] ?? 'draft'),
+            'post_status' => sanitize_text_field(wp_unslash($_POST['post_status'] ?? 'draft')),
             'generate_image' => !empty($_POST['generate_image']),
             'min_words' => $min_words,
             'max_words' => $max_words,
@@ -150,10 +150,10 @@ class AICG_Admin_Dashboard {
         }
 
         // Obtener parámetros
-        $topics = isset($_POST['topics']) ? array_map('sanitize_text_field', $_POST['topics']) : array();
+        $topics = isset($_POST['topics']) ? array_map('sanitize_text_field', wp_unslash($_POST['topics'])) : array();
         $include_headlines = !empty($_POST['include_headlines']);
-        $post_status = sanitize_text_field($_POST['post_status'] ?? 'draft');
-        $post_type = sanitize_text_field($_POST['post_type'] ?? 'post');
+        $post_status = sanitize_text_field(wp_unslash($_POST['post_status'] ?? 'draft'));
+        $post_type = sanitize_text_field(wp_unslash($_POST['post_type'] ?? 'post'));
         $generate_image = !empty($_POST['generate_image']);
 
         // Encolar el trabajo y devolver el job_id (la generación corre en segundo plano)
@@ -179,7 +179,7 @@ class AICG_Admin_Dashboard {
             wp_send_json_error(__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
-        $job_id = sanitize_text_field($_POST['job_id'] ?? '');
+        $job_id = sanitize_text_field(wp_unslash($_POST['job_id'] ?? ''));
         $job = AICG_Background_Jobs::get($job_id);
 
         if (!$job) {
@@ -203,7 +203,7 @@ class AICG_Admin_Dashboard {
         check_admin_referer('aicg_run_now');
 
         if (!current_user_can('manage_options')) {
-            wp_die(__('Sin permisos suficientes', 'ai-content-generator'));
+            wp_die(esc_html__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
         $type = isset($_GET['type']) && $_GET['type'] === 'news' ? 'news' : 'article';
@@ -237,7 +237,7 @@ class AICG_Admin_Dashboard {
         check_admin_referer('aicg_clear_cron_errors');
 
         if (!current_user_can('manage_options')) {
-            wp_die(__('Sin permisos suficientes', 'ai-content-generator'));
+            wp_die(esc_html__('Sin permisos suficientes', 'ai-content-generator'));
         }
 
         delete_option('aicg_cron_errors');

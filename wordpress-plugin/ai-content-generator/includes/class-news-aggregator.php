@@ -389,13 +389,14 @@ class AICG_News_Aggregator {
 
             // Generar título
             $date_formatted = wp_date('l, j \d\e F \d\e Y');
+            /* translators: %s: fecha del resumen */
             $result['title'] = sprintf(__('Resumen de noticias - %s', 'ai-content-generator'), $date_formatted);
 
             $result['content'] = implode("\n", $content_parts);
 
             // Verificar que hay contenido real (más que solo el wrapper vacío)
             $content_without_wrapper = str_replace(array('<div class="aicg-news-summary">', '</div>'), '', $result['content']);
-            $content_without_wrapper = trim(strip_tags($content_without_wrapper));
+            $content_without_wrapper = trim(wp_strip_all_tags($content_without_wrapper));
 
             if (empty($content_without_wrapper) && empty($result['topics_processed'])) {
                 AICG_Logger::debug('[AICG] No se generó contenido de noticias. Topics procesados: 0');
@@ -1076,7 +1077,7 @@ class AICG_News_Aggregator {
             return false;
         }
 
-        $host = parse_url($validated, PHP_URL_HOST);
+        $host = wp_parse_url($validated, PHP_URL_HOST);
         if (!$host) {
             return false;
         }
@@ -1138,7 +1139,7 @@ class AICG_News_Aggregator {
                     'title' => (string) $item->title,
                     'link' => (string) $item->link,
                     'pubDate' => (string) $item->pubDate,
-                    'description' => isset($item->description) ? strip_tags((string) $item->description) : '',
+                    'description' => isset($item->description) ? wp_strip_all_tags((string) $item->description) : '',
                     'source' => isset($item->source) ? (string) $item->source : ''
                 );
             }
@@ -1354,16 +1355,10 @@ EJEMPLO DE FORMATO:
 
         $table = $wpdb->prefix . 'aicg_used_urls';
 
-        // Verificar si la tabla existe
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
-        if (!$table_exists) {
-            return array();
-        }
-
-        // URLs de los últimos 7 días (sin prepare ya que no hay parámetros de usuario)
-        $urls = $wpdb->get_col(
-            "SELECT url FROM $table WHERE used_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)"
-        );
+        // URLs de los últimos 7 días. El nombre de tabla viene de $wpdb->prefix
+        // (seguro) y la consulta no lleva input de usuario.
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        $urls = $wpdb->get_col("SELECT url FROM {$table} WHERE used_at >= DATE_SUB(NOW(), INTERVAL 7 DAY)");
 
         return $urls ?: array();
     }
@@ -1378,13 +1373,8 @@ EJEMPLO DE FORMATO:
 
         $table = $wpdb->prefix . 'aicg_used_urls';
 
-        // Verificar si la tabla existe, si no, crearla
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
-        if (!$table_exists) {
-            $this->create_used_urls_table();
-        }
-
         foreach ($urls as $url) {
+            // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Tabla propia del plugin.
             $wpdb->replace(
                 $table,
                 array(
@@ -1396,30 +1386,8 @@ EJEMPLO DE FORMATO:
         }
 
         // Limpiar URLs antiguas (más de 30 días)
-        $wpdb->query("DELETE FROM $table WHERE used_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
-    }
-
-    /**
-     * Crear tabla de URLs usadas si no existe
-     */
-    private function create_used_urls_table() {
-        global $wpdb;
-
-        $table = $wpdb->prefix . 'aicg_used_urls';
-        $charset_collate = $wpdb->get_charset_collate();
-
-        $sql = "CREATE TABLE IF NOT EXISTS $table (
-            id bigint(20) NOT NULL AUTO_INCREMENT,
-            url varchar(500) NOT NULL,
-            used_at datetime DEFAULT CURRENT_TIMESTAMP,
-            PRIMARY KEY (id),
-            UNIQUE KEY url (url(255))
-        ) $charset_collate;";
-
-        require_once ABSPATH . 'wp-admin/includes/upgrade.php';
-        dbDelta($sql);
-
-        AICG_Logger::debug('[AICG] Tabla ' . $table . ' creada/verificada');
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        $wpdb->query("DELETE FROM {$table} WHERE used_at < DATE_SUB(NOW(), INTERVAL 30 DAY)");
     }
 
     /**
@@ -1432,25 +1400,9 @@ EJEMPLO DE FORMATO:
 
         $table = $wpdb->prefix . 'aicg_used_urls';
 
-        // Verificar si la tabla existe
-        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '$table'");
-        if (!$table_exists) {
-            return array();
-        }
-
-        // Verificar si la columna title_normalized existe
-        $column_exists = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'title_normalized'");
-        if (!$column_exists) {
-            // Agregar la columna si no existe
-            $wpdb->query("ALTER TABLE $table ADD COLUMN title_normalized VARCHAR(500) DEFAULT NULL");
-            AICG_Logger::debug('[AICG] Columna title_normalized agregada a tabla ' . $table);
-            return array();
-        }
-
         // Títulos de los últimos 14 días (más tiempo que URLs para evitar repetición)
-        $titles = $wpdb->get_col(
-            "SELECT title_normalized FROM $table WHERE title_normalized IS NOT NULL AND used_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)"
-        );
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario.
+        $titles = $wpdb->get_col("SELECT title_normalized FROM {$table} WHERE title_normalized IS NOT NULL AND used_at >= DATE_SUB(NOW(), INTERVAL 14 DAY)");
 
         return $titles ?: array();
     }
@@ -1465,12 +1417,6 @@ EJEMPLO DE FORMATO:
 
         $table = $wpdb->prefix . 'aicg_used_urls';
 
-        // Verificar/crear columna
-        $column_exists = $wpdb->get_var("SHOW COLUMNS FROM $table LIKE 'title_normalized'");
-        if (!$column_exists) {
-            $wpdb->query("ALTER TABLE $table ADD COLUMN title_normalized VARCHAR(500) DEFAULT NULL");
-        }
-
         foreach ($news as $item) {
             if (empty($item['title'])) {
                 continue;
@@ -1482,12 +1428,11 @@ EJEMPLO DE FORMATO:
             // Actualizar el registro existente o crear uno nuevo
             if (!empty($url)) {
                 // Si ya existe la URL, actualizar el título
-                $existing = $wpdb->get_var($wpdb->prepare(
-                    "SELECT id FROM $table WHERE url = %s",
-                    $url
-                ));
+                // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared -- Tabla propia; nombre desde $wpdb->prefix, valor preparado con %s.
+                $existing = $wpdb->get_var($wpdb->prepare("SELECT id FROM {$table} WHERE url = %s", $url));
 
                 if ($existing) {
+                    // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Tabla propia del plugin.
                     $wpdb->update(
                         $table,
                         array('title_normalized' => $normalized_title),
@@ -1785,7 +1730,7 @@ EJEMPLO DE FORMATO:
      */
     private function decode_google_news_url($google_url) {
         // Extraer el path del artículo
-        $parsed = parse_url($google_url);
+        $parsed = wp_parse_url($google_url);
         if (!isset($parsed['path'])) {
             return false;
         }
@@ -1890,7 +1835,7 @@ EJEMPLO DE FORMATO:
             'youtube.com'
         );
 
-        $parsed = parse_url($url);
+        $parsed = wp_parse_url($url);
         if (!isset($parsed['host'])) {
             return false;
         }
@@ -1921,7 +1866,7 @@ EJEMPLO DE FORMATO:
 
         // Verificar que tiene extensión de imagen o es una URL de imagen conocida
         $image_extensions = array('.jpg', '.jpeg', '.png', '.gif', '.webp');
-        $parsed = parse_url(strtolower($url));
+        $parsed = wp_parse_url(strtolower($url));
         $path = isset($parsed['path']) ? $parsed['path'] : '';
 
         foreach ($image_extensions as $ext) {
@@ -2017,7 +1962,7 @@ EJEMPLO DE FORMATO:
         require_once(ABSPATH . 'wp-admin/includes/file.php');
         require_once(ABSPATH . 'wp-admin/includes/image.php');
 
-        $filename = 'news-summary-' . date('Y-m-d-His');
+        $filename = 'news-summary-' . gmdate('Y-m-d-His');
 
         // Verificar si es una data URL base64
         if (strpos($image_url, 'data:image/') === 0) {
@@ -2061,7 +2006,7 @@ EJEMPLO DE FORMATO:
 
         // Limpiar archivo temporal si hubo error
         if (is_wp_error($attachment_id)) {
-            @unlink($tmp_file);
+            wp_delete_file($tmp_file);
             AICG_Logger::debug('[AICG] Error guardando imagen: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
@@ -2140,7 +2085,7 @@ EJEMPLO DE FORMATO:
 
         // Limpiar archivo temporal si hubo error
         if (is_wp_error($attachment_id)) {
-            @unlink($tmp_file);
+            wp_delete_file($tmp_file);
             AICG_Logger::debug('[AICG] Error guardando imagen base64: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
@@ -2166,7 +2111,7 @@ EJEMPLO DE FORMATO:
 
         // Generar nombre único basado en URL
         $url_hash = md5($image_url);
-        $filename = 'carousel-' . $url_hash . '-' . date('Ymd');
+        $filename = 'carousel-' . $url_hash . '-' . gmdate('Ymd');
 
         // Verificar si ya existe esta imagen (evitar duplicados)
         $existing = get_posts(array(
@@ -2202,7 +2147,7 @@ EJEMPLO DE FORMATO:
         // Solo procesar imágenes válidas
         $valid_mimes = array('image/jpeg', 'image/png', 'image/gif', 'image/webp');
         if (!in_array($mime_type, $valid_mimes)) {
-            @unlink($tmp_file);
+            wp_delete_file($tmp_file);
             return new WP_Error('invalid_image', __('Tipo de imagen no válido', 'ai-content-generator'));
         }
 
@@ -2218,7 +2163,7 @@ EJEMPLO DE FORMATO:
         // Redimensionar imagen si es necesario
         $resized_file = $this->resize_image_file($tmp_file, $max_width, $max_height, $mime_type);
         if ($resized_file && $resized_file !== $tmp_file) {
-            @unlink($tmp_file);
+            wp_delete_file($tmp_file);
             $tmp_file = $resized_file;
         }
 
@@ -2232,7 +2177,7 @@ EJEMPLO DE FORMATO:
         $attachment_id = media_handle_sideload($file_array, 0, $alt_text);
 
         if (is_wp_error($attachment_id)) {
-            @unlink($tmp_file);
+            wp_delete_file($tmp_file);
             AICG_Logger::debug('[AICG] Error guardando imagen carrusel: ' . $attachment_id->get_error_message());
             return $attachment_id;
         }
@@ -2456,6 +2401,7 @@ EJEMPLO DE FORMATO:
                 $last_news_post = get_posts(array(
                     'post_type' => $post_type,
                     'posts_per_page' => 1,
+                    // phpcs:ignore WordPress.DB.SlowDBQuery.slow_db_query_meta_query -- Consulta puntual para localizar el último resumen; volumen bajo.
                     'meta_query' => array(
                         array(
                             'key' => '_aicg_type',
@@ -2581,6 +2527,7 @@ EJEMPLO DE FORMATO:
     private function log_generation($result) {
         global $wpdb;
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Inserción en tabla propia del plugin.
         $wpdb->insert(
             $wpdb->prefix . 'aicg_history',
             array(
@@ -2611,6 +2558,7 @@ EJEMPLO DE FORMATO:
         $model = is_wp_error($this->provider) ? '-' : $this->provider->get_default_text_model();
         $topics = !empty($args['topics']) && is_array($args['topics']) ? implode(', ', $args['topics']) : '';
 
+        // phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching -- Inserción en tabla propia del plugin.
         $wpdb->insert(
             $wpdb->prefix . 'aicg_history',
             array(

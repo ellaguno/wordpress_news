@@ -10,6 +10,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Estas variables son locales al método que incluye esta plantilla, no globales.
+
 $news_topics = get_option('aicg_news_topics', array());
 ?>
 
@@ -22,11 +24,14 @@ $news_topics = get_option('aicg_news_topics', array());
     <?php if (empty($news_topics)) : ?>
     <div class="notice notice-warning">
         <p>
-            <?php printf(
-                esc_html__('No hay temas de noticias configurados. %sConfigura los temas%s para generar resúmenes.', 'ai-content-generator'),
-                '<a href="' . admin_url('admin.php?page=aicg-settings#news-settings') . '">',
+            <?php
+            /* translators: 1: etiqueta de apertura del enlace, 2: etiqueta de cierre del enlace */
+            printf(
+                esc_html__('No hay temas de noticias configurados. %1$sConfigura los temas%2$s para generar resúmenes.', 'ai-content-generator'),
+                '<a href="' . esc_url(admin_url('admin.php?page=aicg-settings#news-settings')) . '">',
                 '</a>'
-            ); ?>
+            );
+            ?>
         </p>
     </div>
     <?php endif; ?>
@@ -177,10 +182,13 @@ $news_topics = get_option('aicg_news_topics', array());
                         <?php foreach ($news_topics as $topic) : ?>
                         <li>
                             <span class="dashicons dashicons-rss"></span>
-                            <?php printf(
+                            <?php
+                            /* translators: %s: nombre del tema de búsqueda */
+                            printf(
                                 esc_html__('Google News - Búsqueda: "%s"', 'ai-content-generator'),
                                 esc_html($topic['nombre'])
-                            ); ?>
+                            );
+                            ?>
                         </li>
                         <?php endforeach; ?>
                     </ul>

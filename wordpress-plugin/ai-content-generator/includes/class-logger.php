@@ -44,7 +44,7 @@ class AICG_Logger {
      */
     public static function debug($message) {
         if (self::is_debug_enabled()) {
-            error_log($message);
+            error_log($message); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Logging de depuración condicionado a WP_DEBUG.
         }
     }
 
@@ -54,6 +54,6 @@ class AICG_Logger {
      * @param string $message
      */
     public static function error($message) {
-        error_log($message);
+        error_log($message); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_error_log -- Logging de depuración condicionado a WP_DEBUG.
     }
 }

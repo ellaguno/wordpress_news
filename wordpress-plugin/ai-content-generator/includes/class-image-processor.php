@@ -43,6 +43,7 @@ class AICG_Image_Processor {
         if ($status_code !== 200) {
             return new WP_Error(
                 'download_error',
+                /* translators: %d: código de estado HTTP */
                 sprintf(__('Error al descargar imagen: HTTP %d', 'ai-content-generator'), $status_code)
             );
         }
@@ -292,7 +293,7 @@ class AICG_Image_Processor {
         $attachment_id = wp_insert_attachment($attachment, $file_path);
 
         if (is_wp_error($attachment_id)) {
-            @unlink($file_path);
+            wp_delete_file($file_path);
             return $attachment_id;
         }
 
@@ -434,7 +435,7 @@ class AICG_Image_Processor {
         }
 
         $result = file_get_contents($saved['path']);
-        @unlink($saved['path']);
+        wp_delete_file($saved['path']);
 
         return $result;
     }

@@ -10,18 +10,24 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Estas variables son locales al método que incluye esta plantilla, no globales.
+
 global $wpdb;
 $table_name = $wpdb->prefix . 'aicg_history';
 
 // Paginación
 $per_page = 20;
-$current_page = isset($_GET['paged']) ? max(1, intval($_GET['paged'])) : 1;
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de listado de solo lectura, sin acción que cambie estado.
+$current_page = isset($_GET['paged']) ? max(1, intval(wp_unslash($_GET['paged']))) : 1;
 $offset = ($current_page - 1) * $per_page;
 
 // Filtros
-$type_filter = isset($_GET['type']) ? sanitize_text_field($_GET['type']) : '';
-$provider_filter = isset($_GET['provider']) ? sanitize_text_field($_GET['provider']) : '';
-$status_filter = isset($_GET['status']) ? sanitize_text_field($_GET['status']) : '';
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de listado de solo lectura, sin acción que cambie estado.
+$type_filter = isset($_GET['type']) ? sanitize_text_field(wp_unslash($_GET['type'])) : '';
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de listado de solo lectura, sin acción que cambie estado.
+$provider_filter = isset($_GET['provider']) ? sanitize_text_field(wp_unslash($_GET['provider'])) : '';
+// phpcs:ignore WordPress.Security.NonceVerification.Recommended -- Filtro de listado de solo lectura, sin acción que cambie estado.
+$status_filter = isset($_GET['status']) ? sanitize_text_field(wp_unslash($_GET['status'])) : '';
 
 // Construir query
 $where = array('1=1');
@@ -46,6 +52,7 @@ $where_clause = implode(' AND ', $where);
 
 // Total de registros
 $total_query = "SELECT COUNT(*) FROM $table_name WHERE $where_clause";
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
 $total_items = $wpdb->get_var($params ? $wpdb->prepare($total_query, $params) : $total_query);
 $total_pages = ceil($total_items / $per_page);
 
@@ -53,17 +60,12 @@ $total_pages = ceil($total_items / $per_page);
 $query = "SELECT * FROM $table_name WHERE $where_clause ORDER BY created_at DESC LIMIT %d OFFSET %d";
 $params[] = $per_page;
 $params[] = $offset;
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,WordPress.DB.PreparedSQL.NotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
 $items = $wpdb->get_results($wpdb->prepare($query, $params));
 
 // Estadísticas
-$stats = $wpdb->get_row("
-    SELECT
-        SUM(tokens_used) as total_tokens,
-        SUM(cost) as total_cost,
-        COUNT(CASE WHEN type = 'article' AND status = 'success' THEN 1 END) as articles,
-        COUNT(CASE WHEN type = 'news' AND status = 'success' THEN 1 END) as news
-    FROM $table_name
-");
+// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery,WordPress.DB.DirectDatabaseQuery.NoCaching,WordPress.DB.PreparedSQL.InterpolatedNotPrepared,PluginCheck.Security.DirectDB.UnescapedDBParameter -- Tabla propia del plugin; nombre desde $wpdb->prefix, sin input de usuario sin preparar.
+$stats = $wpdb->get_row("SELECT SUM(tokens_used) as total_tokens, SUM(cost) as total_cost, COUNT(CASE WHEN type = 'article' AND status = 'success' THEN 1 END) as articles, COUNT(CASE WHEN type = 'news' AND status = 'success' THEN 1 END) as news FROM $table_name");
 ?>
 
 <div class="wrap aicg-history">
@@ -120,7 +122,7 @@ $stats = $wpdb->get_row("
             <button type="submit" class="button"><?php esc_html_e('Filtrar', 'ai-content-generator'); ?></button>
 
             <?php if ($type_filter || $provider_filter || $status_filter) : ?>
-                <a href="<?php echo admin_url('admin.php?page=aicg-history'); ?>" class="button">
+                <a href="<?php echo esc_url(admin_url('admin.php?page=aicg-history')); ?>" class="button">
                     <?php esc_html_e('Limpiar filtros', 'ai-content-generator'); ?>
                 </a>
             <?php endif; ?>
@@ -205,11 +207,11 @@ $stats = $wpdb->get_row("
                     </td>
                     <td class="column-actions">
                         <?php if ($item->post_id && get_post($item->post_id)) : ?>
-                            <a href="<?php echo get_permalink($item->post_id); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Ver', 'ai-content-generator'); ?>">
+                            <a href="<?php echo esc_url(get_permalink($item->post_id)); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Ver', 'ai-content-generator'); ?>">
                                 <span class="dashicons dashicons-visibility"></span>
                                 <span class="screen-reader-text"><?php esc_html_e('Ver post', 'ai-content-generator'); ?></span>
                             </a>
-                            <a href="<?php echo get_edit_post_link($item->post_id); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Editar', 'ai-content-generator'); ?>">
+                            <a href="<?php echo esc_url(get_edit_post_link($item->post_id)); ?>" target="_blank" class="button button-small" title="<?php esc_attr_e('Editar', 'ai-content-generator'); ?>">
                                 <span class="dashicons dashicons-edit"></span>
                                 <span class="screen-reader-text"><?php esc_html_e('Editar post', 'ai-content-generator'); ?></span>
                             </a>
@@ -231,9 +233,11 @@ $stats = $wpdb->get_row("
         <div class="tablenav bottom">
             <div class="tablenav-pages">
                 <span class="displaying-num">
-                    <?php printf(
+                    <?php
+                    /* translators: %s: número de elementos. */
+                    printf(
                         esc_html(_n('%s elemento', '%s elementos', $total_items, 'ai-content-generator')),
-                        number_format($total_items)
+                        esc_html(number_format($total_items))
                     ); ?>
                 </span>
                 <span class="pagination-links">

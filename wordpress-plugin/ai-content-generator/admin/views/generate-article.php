@@ -10,6 +10,8 @@ if (!defined('ABSPATH')) {
     exit;
 }
 
+// phpcs:disable WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound -- Estas variables son locales al método que incluye esta plantilla, no globales.
+
 $topics = get_option('aicg_article_topics', array());
 $categories = get_categories(array('hide_empty' => false));
 ?>

@@ -360,7 +360,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
 
         // Intentar aumentar tiempo de ejecución de PHP si es posible
         if (function_exists('set_time_limit')) {
-            @set_time_limit(300);
+            @set_time_limit(300); // phpcs:ignore Squiz.PHP.DiscouragedFunctions.Discouraged -- Se amplía el tiempo de ejecución para peticiones de generación de imagen que pueden tardar varios minutos.
         }
 
         $defaults = array(
@@ -407,7 +407,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             }
 
             if (!isset($response['data'][0]['url'])) {
-                AICG_Logger::debug('[AICG] OpenRouter image response: ' . substr(print_r($response, true), 0, 500));
+                AICG_Logger::debug('[AICG] OpenRouter image response: ' . substr(print_r($response, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
                 $this->timeout = $original_timeout;
                 return new WP_Error('invalid_response', __('Respuesta inválida para generación de imagen', 'ai-content-generator'));
             }
@@ -562,7 +562,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             );
         }
 
-        AICG_Logger::debug('[AICG] OpenRouter chat image request: ' . substr(print_r($body, true), 0, 500));
+        AICG_Logger::debug('[AICG] OpenRouter chat image request: ' . substr(print_r($body, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
         AICG_Logger::debug('[AICG] Iniciando make_request para imagen... (esto puede tardar varios minutos)');
         $start_time = microtime(true);
 
@@ -576,13 +576,13 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             return $response;
         }
 
-        AICG_Logger::debug('[AICG] OpenRouter chat image response keys: ' . print_r(array_keys($response), true));
+        AICG_Logger::debug('[AICG] OpenRouter chat image response keys: ' . print_r(array_keys($response), true)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
 
         // Buscar la imagen en la respuesta
         $image_url = $this->extract_image_from_response($response);
 
         if (!$image_url) {
-            AICG_Logger::debug('[AICG] OpenRouter full response: ' . substr(print_r($response, true), 0, 500));
+            AICG_Logger::debug('[AICG] OpenRouter full response: ' . substr(print_r($response, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
             return new WP_Error(
                 'no_image_in_response',
                 __('No se encontró una imagen en la respuesta del modelo. Verifica que el modelo soporta generación de imágenes.', 'ai-content-generator')
@@ -640,7 +640,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         // gpt-image-1 y gpt-5-image siempre retornan b64_json
         // No necesitamos especificar response_format ya que no es soportado
 
-        AICG_Logger::debug('[AICG] OpenRouter images endpoint request: ' . substr(print_r($body, true), 0, 500));
+        AICG_Logger::debug('[AICG] OpenRouter images endpoint request: ' . substr(print_r($body, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
 
         $response = $this->make_request('/images/generations', $body);
 
@@ -648,7 +648,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             return $response;
         }
 
-        AICG_Logger::debug('[AICG] OpenRouter images endpoint response keys: ' . print_r(array_keys($response), true));
+        AICG_Logger::debug('[AICG] OpenRouter images endpoint response keys: ' . print_r(array_keys($response), true)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
 
         // Buscar en data[0].b64_json o data[0].url
         if (isset($response['data'][0]['b64_json'])) {
@@ -658,7 +658,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             AICG_Logger::debug('[AICG] Image found in data[0].url');
             $image_url = $response['data'][0]['url'];
         } else {
-            AICG_Logger::debug('[AICG] No image in images endpoint response: ' . substr(print_r($response, true), 0, 500));
+            AICG_Logger::debug('[AICG] No image in images endpoint response: ' . substr(print_r($response, true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
             return new WP_Error('no_image', __('No se encontró imagen en la respuesta', 'ai-content-generator'));
         }
 
@@ -773,14 +773,14 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         AICG_Logger::debug('[AICG] No image found. Response structure analysis:');
         if (isset($response['choices'][0]['message'])) {
             $message = $response['choices'][0]['message'];
-            AICG_Logger::debug('[AICG] - message keys: ' . print_r(array_keys($message), true));
+            AICG_Logger::debug('[AICG] - message keys: ' . print_r(array_keys($message), true)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
             if (isset($message['content'])) {
                 $content_type = gettype($message['content']);
                 $content_empty = empty($message['content']);
                 AICG_Logger::debug("[AICG] - content type: {$content_type}, empty: " . ($content_empty ? 'yes' : 'no'));
             }
             if (isset($message['images'])) {
-                AICG_Logger::debug('[AICG] - images present: ' . substr(print_r($message['images'], true), 0, 500));
+                AICG_Logger::debug('[AICG] - images present: ' . substr(print_r($message['images'], true), 0, 500)); // phpcs:ignore WordPress.PHP.DevelopmentFunctions.error_log_print_r -- Logging de depuración condicionado a WP_DEBUG.
             }
         }
 
