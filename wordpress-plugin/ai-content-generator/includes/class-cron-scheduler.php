@@ -114,47 +114,58 @@ class AICG_Cron_Scheduler {
             return;
         }
 
-        // Verificar que haya proveedor configurado
-        $provider = AICG_AI_Provider_Factory::get_text_provider();
-        if (is_wp_error($provider) || !$provider->is_configured()) {
-            $this->log_error('article', __('Proveedor de IA no configurado', 'ai-content-generator'));
+        // Evitar ejecuciones solapadas: una generación puede tardar varios minutos
+        // y WP-Cron puede disparar el mismo evento dos veces (doble post, doble gasto en API)
+        if (!$this->acquire_lock('article')) {
+            $this->log_error('article', __('Ejecución omitida: hay otra generación de artículo en curso', 'ai-content-generator'));
             return;
         }
 
-        // Obtener tema aleatorio
-        $topics = get_option('aicg_article_topics', array());
-        if (empty($topics)) {
-            $this->log_error('article', __('No hay temas configurados', 'ai-content-generator'));
-            return;
+        try {
+            // Verificar que haya proveedor configurado
+            $provider = AICG_AI_Provider_Factory::get_text_provider();
+            if (is_wp_error($provider) || !$provider->is_configured()) {
+                $this->log_error('article', __('Proveedor de IA no configurado', 'ai-content-generator'));
+                return;
+            }
+
+            // Obtener tema aleatorio
+            $topics = get_option('aicg_article_topics', array());
+            if (empty($topics)) {
+                $this->log_error('article', __('No hay temas configurados', 'ai-content-generator'));
+                return;
+            }
+
+            $topic = $topics[array_rand($topics)];
+
+            // Obtener estado de publicación configurado
+            $post_status = get_option('aicg_schedule_post_status', 'draft');
+
+            // Generar artículo
+            $generator = new AICG_Article_Generator();
+            $result = $generator->generate(array(
+                'topic' => $topic,
+                'post_status' => $post_status,
+                'generate_image' => true
+            ));
+
+            if (is_wp_error($result)) {
+                $this->log_error('article', $result->get_error_message());
+                return;
+            }
+
+            // Log de éxito
+            $this->log_success('article', sprintf(
+                __('Artículo generado: "%s" (Post ID: %d)', 'ai-content-generator'),
+                $result['title'],
+                $result['post_id']
+            ));
+
+            // Notificar al administrador (opcional)
+            $this->maybe_notify_admin('article', $result);
+        } finally {
+            $this->release_lock('article');
         }
-
-        $topic = $topics[array_rand($topics)];
-
-        // Obtener estado de publicación configurado
-        $post_status = get_option('aicg_schedule_post_status', 'draft');
-
-        // Generar artículo
-        $generator = new AICG_Article_Generator();
-        $result = $generator->generate(array(
-            'topic' => $topic,
-            'post_status' => $post_status,
-            'generate_image' => true
-        ));
-
-        if (is_wp_error($result)) {
-            $this->log_error('article', $result->get_error_message());
-            return;
-        }
-
-        // Log de éxito
-        $this->log_success('article', sprintf(
-            __('Artículo generado: "%s" (Post ID: %d)', 'ai-content-generator'),
-            $result['title'],
-            $result['post_id']
-        ));
-
-        // Notificar al administrador (opcional)
-        $this->maybe_notify_admin('article', $result);
     }
 
     /**
@@ -166,44 +177,83 @@ class AICG_Cron_Scheduler {
             return;
         }
 
-        // Verificar proveedor
-        $provider = AICG_AI_Provider_Factory::get_text_provider();
-        if (is_wp_error($provider) || !$provider->is_configured()) {
-            $this->log_error('news', __('Proveedor de IA no configurado', 'ai-content-generator'));
+        // Evitar ejecuciones solapadas (ver run_scheduled_article)
+        if (!$this->acquire_lock('news')) {
+            $this->log_error('news', __('Ejecución omitida: hay otra generación de noticias en curso', 'ai-content-generator'));
             return;
         }
 
-        // Verificar temas
-        $topics = get_option('aicg_news_topics', array());
-        if (empty($topics)) {
-            $this->log_error('news', __('No hay temas de noticias configurados', 'ai-content-generator'));
-            return;
+        try {
+            // Verificar proveedor
+            $provider = AICG_AI_Provider_Factory::get_text_provider();
+            if (is_wp_error($provider) || !$provider->is_configured()) {
+                $this->log_error('news', __('Proveedor de IA no configurado', 'ai-content-generator'));
+                return;
+            }
+
+            // Verificar temas
+            $topics = get_option('aicg_news_topics', array());
+            if (empty($topics)) {
+                $this->log_error('news', __('No hay temas de noticias configurados', 'ai-content-generator'));
+                return;
+            }
+
+            // Obtener estado de publicación configurado
+            $post_status = get_option('aicg_schedule_post_status', 'draft');
+
+            // Generar resumen de noticias
+            $aggregator = new AICG_News_Aggregator();
+            $result = $aggregator->generate(array(
+                'include_headlines' => true,
+                'post_status' => $post_status
+            ));
+
+            if (is_wp_error($result)) {
+                $this->log_error('news', $result->get_error_message());
+                return;
+            }
+
+            // Log de éxito
+            $this->log_success('news', sprintf(
+                __('Resumen de noticias generado (Post ID: %d, Noticias: %d)', 'ai-content-generator'),
+                $result['post_id'],
+                $result['news_count']
+            ));
+
+            // Notificar al administrador
+            $this->maybe_notify_admin('news', $result);
+        } finally {
+            $this->release_lock('news');
+        }
+    }
+
+    /**
+     * Adquirir lock de ejecución vía transient.
+     *
+     * El transient expira solo (15 min) para no quedar bloqueado
+     * si una ejecución muere sin liberar el lock.
+     *
+     * @param string $type 'article' o 'news'
+     * @return bool true si se adquirió el lock
+     */
+    private function acquire_lock($type) {
+        $key = 'aicg_lock_' . $type;
+
+        if (get_transient($key)) {
+            return false;
         }
 
-        // Obtener estado de publicación configurado
-        $post_status = get_option('aicg_schedule_post_status', 'draft');
+        set_transient($key, time(), 15 * MINUTE_IN_SECONDS);
+        return true;
+    }
 
-        // Generar resumen de noticias
-        $aggregator = new AICG_News_Aggregator();
-        $result = $aggregator->generate(array(
-            'include_headlines' => true,
-            'post_status' => $post_status
-        ));
-
-        if (is_wp_error($result)) {
-            $this->log_error('news', $result->get_error_message());
-            return;
-        }
-
-        // Log de éxito
-        $this->log_success('news', sprintf(
-            __('Resumen de noticias generado (Post ID: %d, Noticias: %d)', 'ai-content-generator'),
-            $result['post_id'],
-            $result['news_count']
-        ));
-
-        // Notificar al administrador
-        $this->maybe_notify_admin('news', $result);
+    /**
+     * Liberar lock de ejecución
+     *
+     * @param string $type 'article' o 'news'
+     */
+    private function release_lock($type) {
+        delete_transient('aicg_lock_' . $type);
     }
 
     /**

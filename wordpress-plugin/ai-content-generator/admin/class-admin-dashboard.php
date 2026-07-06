@@ -110,7 +110,8 @@ class AICG_Admin_Dashboard {
             'min_words' => absint($_POST['min_words'] ?? 1500),
             'max_words' => absint($_POST['max_words'] ?? 2000),
             'sections' => absint($_POST['sections'] ?? 4),
-            'temperature' => floatval($_POST['temperature'] ?? 0.7)
+            'temperature' => floatval($_POST['temperature'] ?? 0.7),
+            'post_author' => absint($_POST['post_author'] ?? 0)
         );
 
         // Generar artículo
@@ -163,7 +164,8 @@ class AICG_Admin_Dashboard {
             'include_headlines' => $include_headlines,
             'post_status' => $post_status,
             'post_type' => $post_type,
-            'generate_image' => $generate_image
+            'generate_image' => $generate_image,
+            'post_author' => absint($_POST['post_author'] ?? 0)
         ));
 
         if (is_wp_error($result)) {

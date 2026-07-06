@@ -180,6 +180,28 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
     }
 
     /**
+     * Obtener el modelo de texto que usará este proveedor.
+     *
+     * Usa el modelo configurado (aicg_default_model) solo si corresponde a este
+     * proveedor; de lo contrario usa el fallback del proveedor. Así el campo
+     * "Modelo de Texto" de la configuración se respeta sin romper la generación
+     * cuando el modelo guardado pertenece a otro proveedor.
+     *
+     * @param string $pattern  Subcadena que identifica los modelos del proveedor (p.ej. 'claude')
+     * @param string $fallback Modelo por defecto del proveedor
+     * @return string
+     */
+    public function get_default_text_model($pattern = '', $fallback = '') {
+        $configured = get_option('aicg_default_model', '');
+
+        if (!empty($configured) && ($pattern === '' || strpos($configured, $pattern) !== false)) {
+            return $configured;
+        }
+
+        return $fallback;
+    }
+
+    /**
      * Probar conexión
      *
      * @return array|WP_Error

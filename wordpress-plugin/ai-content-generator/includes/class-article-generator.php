@@ -360,23 +360,31 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
         if ($args['category_id']) {
             $post_data['post_category'] = array($args['category_id']);
         } else {
-            // Crear o usar categoría basada en el tema
+            // Crear o usar categoría basada en el tema.
+            // wp_insert_term en lugar de wp_create_category: esta última vive en
+            // wp-admin/includes/taxonomy.php y no está cargada en contexto de cron.
             $category = get_term_by('name', $args['topic'], 'category');
-            if (!$category) {
-                $cat_id = wp_create_category($args['topic']);
-                if (!is_wp_error($cat_id)) {
-                    $post_data['post_category'] = array($cat_id);
-                }
-            } else {
+            if ($category) {
                 $post_data['post_category'] = array($category->term_id);
+            } else {
+                $new_term = wp_insert_term($args['topic'], 'category');
+                if (!is_wp_error($new_term)) {
+                    $post_data['post_category'] = array((int) $new_term['term_id']);
+                } elseif ($new_term->get_error_data('term_exists')) {
+                    $post_data['post_category'] = array((int) $new_term->get_error_data('term_exists'));
+                }
             }
         }
 
         // Crear post
-        $post_id = wp_insert_post($post_data);
+        $post_id = wp_insert_post($post_data, true);
 
         if (is_wp_error($post_id)) {
             return $post_id;
+        }
+
+        if (empty($post_id)) {
+            return new WP_Error('post_creation_failed', __('No se pudo crear el post en WordPress', 'ai-content-generator'));
         }
 
         // Asignar imagen destacada
@@ -444,7 +452,7 @@ Escribe directamente el contenido HTML sin explicaciones adicionales.',
                 'type' => 'article',
                 'post_id' => $result['post_id'],
                 'provider' => $this->provider->get_name(),
-                'model' => get_option('aicg_default_model', 'gpt-4o'),
+                'model' => $this->provider->get_default_text_model(),
                 'topic' => $args['topic'],
                 'tokens_used' => $result['tokens_used'],
                 'cost' => $result['cost'],

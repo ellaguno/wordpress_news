@@ -27,8 +27,8 @@ class AICG_Image_Processor {
             return $this->decode_base64_image($url);
         }
 
-        // URL HTTP/HTTPS normal
-        $response = wp_remote_get($url, array(
+        // URL HTTP/HTTPS normal (wp_safe_remote_get bloquea destinos internos — anti-SSRF)
+        $response = wp_safe_remote_get($url, array(
             'timeout' => 60,
             'headers' => array(
                 'User-Agent' => 'Mozilla/5.0 (compatible; WordPress/' . get_bloginfo('version') . ')'

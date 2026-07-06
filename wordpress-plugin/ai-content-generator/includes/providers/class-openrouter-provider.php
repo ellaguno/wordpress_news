@@ -274,9 +274,20 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
      * @param array  $options
      * @return array|WP_Error
      */
+    /**
+     * Modelo de texto a usar (configurado si tiene formato OpenRouter "org/modelo", o fallback)
+     *
+     * @param string $pattern
+     * @param string $fallback
+     * @return string
+     */
+    public function get_default_text_model($pattern = '/', $fallback = 'openai/gpt-4o-mini') {
+        return parent::get_default_text_model($pattern, $fallback);
+    }
+
     public function generate_text($prompt, $options = array()) {
         $defaults = array(
-            'model' => 'openai/gpt-4o-mini',
+            'model' => $this->get_default_text_model(),
             'temperature' => 0.7,
             'max_tokens' => 4000,
             'system_message' => 'Eres un escritor experto que genera contenido de alta calidad en español.'

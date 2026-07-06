@@ -1036,13 +1036,52 @@ class AICG_News_Aggregator {
     }
 
     /**
+     * Validar que una URL remota sea segura de consultar desde el servidor (anti-SSRF).
+     *
+     * Las URLs procesadas provienen de contenido externo (feeds RSS, og:image),
+     * así que además de wp_http_validate_url (esquema http/https, IPs literales
+     * privadas) se resuelve el DNS del host para rechazar hostnames que apunten
+     * a la red interna o a servicios de metadatos cloud.
+     *
+     * @param string $url
+     * @return bool
+     */
+    private function is_safe_remote_url($url) {
+        $validated = wp_http_validate_url($url);
+        if (!$validated) {
+            return false;
+        }
+
+        $host = parse_url($validated, PHP_URL_HOST);
+        if (!$host) {
+            return false;
+        }
+
+        // gethostbyname devuelve el hostname sin cambios si no resuelve;
+        // en ese caso el filtro no valida como IP y la petición fallará sola
+        $ip = filter_var($host, FILTER_VALIDATE_IP) ? $host : gethostbyname($host);
+
+        if (filter_var($ip, FILTER_VALIDATE_IP)
+            && !filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE)) {
+            return false;
+        }
+
+        return true;
+    }
+
+    /**
      * Obtener feed RSS
      *
      * @param string $url
      * @return array
      */
     private function fetch_rss_feed($url) {
-        $response = wp_remote_get($url, array(
+        if (!$this->is_safe_remote_url($url)) {
+            error_log('[AICG] Feed bloqueado por seguridad (SSRF): ' . substr($url, 0, 100));
+            return array();
+        }
+
+        $response = wp_safe_remote_get($url, array(
             'timeout' => 30,
             'headers' => array(
                 'User-Agent' => $this->user_agent
@@ -1059,9 +1098,9 @@ class AICG_News_Aggregator {
             return array();
         }
 
-        // Parsear XML
+        // Parsear XML sin acceso a red (bloquea entidades/DTDs externos)
         libxml_use_internal_errors(true);
-        $xml = simplexml_load_string($body);
+        $xml = simplexml_load_string($body, 'SimpleXMLElement', LIBXML_NONET);
 
         if ($xml === false) {
             return array();
@@ -1497,8 +1536,14 @@ EJEMPLO DE FORMATO:
 
         error_log('[AICG] URL resuelta: ' . $real_url);
 
+        // La URL proviene de contenido externo: validar destino (anti-SSRF)
+        if (!$this->is_safe_remote_url($real_url)) {
+            error_log('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($real_url, 0, 100));
+            return false;
+        }
+
         // Obtener HTML de la página real
-        $response = wp_remote_get($real_url, array(
+        $response = wp_safe_remote_get($real_url, array(
             'timeout' => 15,
             'redirection' => 5,
             'headers' => array(
@@ -1661,32 +1706,46 @@ EJEMPLO DE FORMATO:
     }
 
     /**
-     * Resolver URL usando cURL (sigue redirects de forma más agresiva)
+     * Resolver URL siguiendo redirecciones.
+     *
+     * Usa la API HTTP de WordPress (wp_safe_remote_get) en lugar de cURL directo:
+     * valida el destino inicial y cada redirección contra IPs internas (anti-SSRF)
+     * y respeta los proxies/filtros configurados en el sitio.
      *
      * @param string $url
      * @return string|false
      */
     private function resolve_with_curl($url) {
-        $ch = curl_init();
+        if (!$this->is_safe_remote_url($url)) {
+            error_log('[AICG] URL bloqueada por seguridad (SSRF): ' . substr($url, 0, 100));
+            return false;
+        }
 
-        curl_setopt_array($ch, array(
-            CURLOPT_URL => $url,
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_FOLLOWLOCATION => true,
-            CURLOPT_MAXREDIRS => 10,
-            CURLOPT_TIMEOUT => 20,
-            CURLOPT_SSL_VERIFYPEER => true,
-            CURLOPT_USERAGENT => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            CURLOPT_HTTPHEADER => array(
-                'Accept: text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
-                'Accept-Language: es-ES,es;q=0.9,en;q=0.8',
+        $response = wp_safe_remote_get($url, array(
+            'timeout' => 20,
+            'redirection' => 5,
+            'limit_response_size' => 2 * MB_IN_BYTES,
+            'user-agent' => 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            'headers' => array(
+                'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+                'Accept-Language' => 'es-ES,es;q=0.9,en;q=0.8',
             ),
-            CURLOPT_HEADER => false,
         ));
 
-        $body = curl_exec($ch);
-        $final_url = curl_getinfo($ch, CURLINFO_EFFECTIVE_URL);
-        curl_close($ch);
+        if (is_wp_error($response)) {
+            return false;
+        }
+
+        $body = wp_remote_retrieve_body($response);
+
+        // URL final tras las redirecciones
+        $final_url = '';
+        if (isset($response['http_response']) && is_object($response['http_response'])) {
+            $requests_response = $response['http_response']->get_response_object();
+            if ($requests_response && !empty($requests_response->url)) {
+                $final_url = $requests_response->url;
+            }
+        }
 
         // Si la URL final es diferente y válida
         if ($final_url && $final_url !== $url && $this->is_valid_article_url($final_url)) {
@@ -2398,7 +2457,12 @@ EJEMPLO DE FORMATO:
             return $this->save_base64_image($image_url, $filename);
         }
 
-        // Es una URL remota - descargar
+        // Es una URL remota: validar destino (anti-SSRF) y descargar
+        if (!$this->is_safe_remote_url($image_url)) {
+            error_log('[AICG] Imagen bloqueada por seguridad (SSRF): ' . substr($image_url, 0, 100));
+            return new WP_Error('unsafe_url', __('URL de imagen bloqueada por seguridad', 'ai-content-generator'));
+        }
+
         $tmp_file = download_url($image_url);
 
         if (is_wp_error($tmp_file)) {
@@ -2887,7 +2951,7 @@ EJEMPLO DE FORMATO:
         // Si actualizamos un post existente
         if ($existing_post_id) {
             $post_data['ID'] = $existing_post_id;
-            $post_id = wp_update_post($post_data);
+            $post_id = wp_update_post($post_data, true);
 
             if (!is_wp_error($post_id)) {
                 // Actualizar la fecha de modificación
@@ -2902,12 +2966,21 @@ EJEMPLO DE FORMATO:
         } else {
             // Solo agregar categoría si es un post nuevo (las páginas no tienen categorías)
             if ($post_type === 'post') {
+                // wp_insert_term en lugar de wp_create_category: esta última vive en
+                // wp-admin/includes/taxonomy.php y no está cargada en contexto de cron.
                 $category = get_term_by('name', 'Noticias', 'category');
-                $category_id = $category ? $category->term_id : wp_create_category('Noticias');
-                $post_data['post_category'] = array($category_id);
+                if ($category) {
+                    $category_id = (int) $category->term_id;
+                } else {
+                    $new_term = wp_insert_term('Noticias', 'category');
+                    $category_id = is_wp_error($new_term) ? 0 : (int) $new_term['term_id'];
+                }
+                if ($category_id) {
+                    $post_data['post_category'] = array($category_id);
+                }
             }
 
-            $post_id = wp_insert_post($post_data);
+            $post_id = wp_insert_post($post_data, true);
 
             // Si es la primera vez y está activa la opción de actualizar, guardar el ID
             if (!is_wp_error($post_id) && $update_existing && !$target_post_id) {
@@ -2919,6 +2992,10 @@ EJEMPLO DE FORMATO:
 
         if (is_wp_error($post_id)) {
             return $post_id;
+        }
+
+        if (empty($post_id)) {
+            return new WP_Error('post_creation_failed', __('No se pudo crear el post en WordPress', 'ai-content-generator'));
         }
 
         // Tags (solo para posts)
@@ -2957,7 +3034,7 @@ EJEMPLO DE FORMATO:
                 'type' => 'news',
                 'post_id' => $result['post_id'],
                 'provider' => $this->provider->get_name(),
-                'model' => get_option('aicg_default_model', 'gpt-4o'),
+                'model' => $this->provider->get_default_text_model(),
                 'topic' => implode(', ', $result['topics_processed']),
                 'tokens_used' => $result['tokens_used'],
                 'cost' => $result['cost'],

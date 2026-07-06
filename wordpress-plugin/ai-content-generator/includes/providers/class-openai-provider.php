@@ -131,9 +131,20 @@ class AICG_OpenAI_Provider extends AICG_AI_Provider_Base {
      * @param array  $options
      * @return array|WP_Error
      */
+    /**
+     * Modelo de texto a usar (el configurado, o gpt-4o por defecto)
+     *
+     * @param string $pattern
+     * @param string $fallback
+     * @return string
+     */
+    public function get_default_text_model($pattern = '', $fallback = 'gpt-4o') {
+        return parent::get_default_text_model($pattern, $fallback);
+    }
+
     public function generate_text($prompt, $options = array()) {
         $defaults = array(
-            'model' => get_option('aicg_default_model', 'gpt-4o'),
+            'model' => $this->get_default_text_model(),
             'temperature' => 0.7,
             'max_tokens' => 4000,
             'presence_penalty' => 0.1,

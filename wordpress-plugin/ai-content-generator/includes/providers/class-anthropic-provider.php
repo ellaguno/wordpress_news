@@ -115,9 +115,20 @@ class AICG_Anthropic_Provider extends AICG_AI_Provider_Base {
      * @param array  $options
      * @return array|WP_Error
      */
+    /**
+     * Modelo de texto a usar (configurado si es de Anthropic, o fallback)
+     *
+     * @param string $pattern
+     * @param string $fallback
+     * @return string
+     */
+    public function get_default_text_model($pattern = 'claude', $fallback = 'claude-sonnet-4-20250514') {
+        return parent::get_default_text_model($pattern, $fallback);
+    }
+
     public function generate_text($prompt, $options = array()) {
         $defaults = array(
-            'model' => 'claude-sonnet-4-20250514',
+            'model' => $this->get_default_text_model(),
             'temperature' => 0.7,
             'max_tokens' => 4000,
             'system_message' => 'Eres un escritor experto que genera contenido de alta calidad en español.'
