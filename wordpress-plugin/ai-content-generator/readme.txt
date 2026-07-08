@@ -4,7 +4,7 @@ Tags: ai, content, generator, news, openai
 Requires at least: 5.8
 Tested up to: 7.0
 Requires PHP: 7.4
-Stable tag: 2.10.2
+Stable tag: 2.10.5
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
@@ -89,6 +89,24 @@ It relies on WP-Cron, which is enabled by default. Generation runs in the backgr
 5. Generation history
 
 == Changelog ==
+
+= 2.10.5 =
+* Fixed: articles published as "(sin título)" with the title as the first heading of the content — the title call used max_tokens 100, which reasoning models exhaust before answering; now 1000 with a 4000 retry (shared retry helper moved to the provider base class)
+* If the title still comes back empty, it is extracted from the first h1/h2 of the generated content (and that heading is removed); a duplicated leading heading equal to the title is also removed; last resort: the topic is used as title
+* News: source-reference rows now have vertical margin so they no longer stick to the section image
+
+= 2.10.4 =
+* Fixed: reasoning models (DeepSeek R1/v4, etc.) could spend the whole max_tokens budget on internal reasoning and return an empty summary with no error — empty completions are now detected (with finish_reason logged) and retried once with a larger token budget
+* General summary max_tokens raised from 1000 to 2000 (retry: 6000); topic summaries retry with 4000
+* DeepSeek and OpenRouter providers now return a descriptive error instead of silently empty content
+
+= 2.10.3 =
+* Fixed: source reference icons rendered as empty boxes — KSES strips the data: protocol on save (wp_allowed_protocols is cached before the plugin can allow it), so SVG data-URI numbers were replaced with plain-text numbers styled inline
+* Fixed: the general summary ("Resumen del Día") is now generated after processing topics, using both source headlines and the news actually included in the article, instead of silently skipping when RSS sources returned no headlines
+* The general summary status (processed / no headlines / error) is now shown as the first row of the per-section report
+* Sources saved by older versions without the 'activo' key are treated as active instead of being skipped
+* Fixed: the generated-image placeholder was only inserted when the general summary succeeded
+* Badge reference style: background changed from rgba() to a hex tint, since KSES also discards rgba() in inline styles
 
 = 2.10.2 =
 * WordPress Coding Standards / Plugin Check compliance: output escaping, wp_unslash on inputs, $wpdb->prepare and justified phpcs:ignore for custom-table queries

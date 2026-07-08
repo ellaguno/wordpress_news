@@ -324,6 +324,23 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
             return new WP_Error('invalid_response', __('Respuesta inválida de OpenRouter', 'ai-content-generator'));
         }
 
+        $message = $response['choices'][0]['message'];
+
+        // Los modelos razonadores gastan max_tokens en reasoning; si el
+        // presupuesto se agota, content llega vacío sin error de API
+        if (trim((string) $message['content']) === '') {
+            $finish_reason = isset($response['choices'][0]['finish_reason']) ? $response['choices'][0]['finish_reason'] : 'desconocido';
+            AICG_Logger::debug('[AICG OpenRouter] Respuesta sin contenido. finish_reason=' . $finish_reason);
+            return new WP_Error(
+                'empty_completion',
+                sprintf(
+                    /* translators: %s: finish_reason devuelto por la API */
+                    __('OpenRouter no devolvió contenido (finish_reason: %s). Los modelos razonadores pueden agotar max_tokens antes de responder; aumenta el límite o usa un modelo no razonador.', 'ai-content-generator'),
+                    $finish_reason
+                )
+            );
+        }
+
         $usage = isset($response['usage']) ? $response['usage'] : array(
             'prompt_tokens' => 0,
             'completion_tokens' => 0,
@@ -331,7 +348,7 @@ class AICG_OpenRouter_Provider extends AICG_AI_Provider_Base {
         );
 
         return array(
-            'content' => $response['choices'][0]['message']['content'],
+            'content' => $message['content'],
             'usage' => $usage,
             'model' => $options['model'],
             'cost' => $this->estimate_cost(

@@ -804,11 +804,11 @@
                         rowStyle = 'color: #155724;';
                     } else if (topic.status === 'no_news') {
                         statusIcon = '⚠';
-                        statusText = 'Sin noticias';
+                        statusText = topic.message || 'Sin noticias';
                         rowStyle = 'color: #856404; background: #fff3cd;';
                     } else if (topic.status === 'error') {
                         statusIcon = '✗';
-                        statusText = 'Error';
+                        statusText = topic.message ? 'Error: ' + topic.message : 'Error';
                         rowStyle = 'color: #721c24; background: #f8d7da;';
                     } else {
                         statusIcon = '○';

@@ -146,30 +146,15 @@ class AICG_News_Aggregator {
             $headlines = $this->fetch_main_headlines();
             $main_headlines = $headlines; // Guardar para generar imagen después
 
-            // Paso 1: Resumir titulares principales (solo si include_headlines está activo)
+            // Paso 1: Reservar el lugar del resumen general. Se genera DESPUÉS
+            // de procesar los temas para poder usar también las noticias que
+            // realmente quedaron en el artículo (antes dependía solo de los
+            // titulares de las fuentes RSS y fallaba en silencio si no había).
             if ($args['include_headlines']) {
-                if (!empty($headlines)) {
-                    $summary_result = $this->generate_headlines_summary($headlines);
-                    if (!is_wp_error($summary_result) && !empty($summary_result['content'])) {
-                        $content_parts[] = '<div class="aicg-general-summary">';
-                        $content_parts[] = '<h2>' . esc_html__('Resumen del Día', 'ai-content-generator') . '</h2>';
-                        $content_parts[] = $summary_result['content'];
-                        $content_parts[] = '</div>';
-                        // Marcador para insertar imagen generada después del resumen
-                        $content_parts[] = '<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->';
-                        $result['tokens_used'] += isset($summary_result['usage']['total_tokens']) ? $summary_result['usage']['total_tokens'] : 0;
-                        $result['cost'] += isset($summary_result['cost']) ? $summary_result['cost'] : 0;
-                    } elseif (is_wp_error($summary_result)) {
-                        // Log error pero continuar
-                        AICG_Logger::debug('[AICG] Error generando resumen de titulares: ' . $summary_result->get_error_message());
-                    }
-                } else {
-                    AICG_Logger::debug('[AICG] No se obtuvieron titulares principales');
-                }
-            } else {
-                // Agregar marcador para imagen al inicio aunque no haya resumen
-                $content_parts[] = '<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->';
+                $content_parts[] = '<!--AICG_HEADLINES_SUMMARY_PLACEHOLDER-->';
             }
+            // Marcador para insertar imagen generada (después del resumen si existe)
+            $content_parts[] = '<!--AICG_GENERATED_IMAGE_PLACEHOLDER-->';
 
             // Paso 2: Procesar cada tema
             $news_topics_config = get_option('aicg_news_topics', array());
@@ -309,15 +294,19 @@ class AICG_News_Aggregator {
 
                 // Estilos según orientación - horizontal por defecto con estilos explícitos
                 if ($ref_orientation === 'vertical') {
-                    $orientation_style = 'display: flex; flex-direction: column; align-items: flex-start; gap: 5px;';
+                    $orientation_style = 'display: flex; flex-direction: column; align-items: flex-start; gap: 5px; margin: 12px 0;';
                 } else {
                     // Horizontal: forzar que los elementos estén en línea
-                    $orientation_style = 'display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 5px;';
+                    $orientation_style = 'display: flex; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 5px; margin: 12px 0;';
                 }
 
-                // Construir referencias como una sola cadena (sin saltos de línea)
-                // Usamos SVG para los números para evitar que lectores de pantalla los lean
+                // Construir referencias como una sola cadena (sin saltos de línea).
+                // Números como texto plano: los SVG con data: URI eran eliminados
+                // por KSES al guardar (wp_allowed_protocols se cachea antes de que
+                // el plugin pueda permitir el protocolo data:). El enlace lleva
+                // aria-hidden, así que los lectores de pantalla no leen el número.
                 $refs_html = '';
+                $ref_font_size = max(10, intval($ref_size * 0.55));
                 foreach ($news as $index => $item) {
                     $num = $index + 1;
                     $link = esc_url($item['link']);
@@ -331,39 +320,44 @@ class AICG_News_Aggregator {
                     }
                     $tooltip = !empty($source_name) ? esc_attr($source_name) : esc_attr__('Ver fuente', 'ai-content-generator');
 
-                    // Generar SVG con el número (no será leído por lectores de pantalla)
-                    $svg_number = $this->generate_number_svg($num, $ref_color, $ref_style, $ref_size);
-
                     switch ($ref_style) {
                         case 'circle':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-circle" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-circle" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; background-color: %s; color: #ffffff; border-radius: 50%%; font-size: %dpx; font-weight: bold; line-height: 1; text-decoration: none; margin: 0 3px;">%d</a>',
                                 $link,
                                 $tooltip,
                                 $ref_size,
                                 $ref_size,
-                                $svg_number
+                                esc_attr($ref_color),
+                                $ref_font_size,
+                                $num
                             );
                             break;
 
                         case 'square':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-square" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-square" style="display: inline-flex; align-items: center; justify-content: center; width: %dpx; height: %dpx; background-color: %s; color: #ffffff; border-radius: 4px; font-size: %dpx; font-weight: bold; line-height: 1; text-decoration: none; margin: 0 3px;">%d</a>',
                                 $link,
                                 $tooltip,
                                 $ref_size,
                                 $ref_size,
-                                $svg_number
+                                esc_attr($ref_color),
+                                $ref_font_size,
+                                $num
                             );
                             break;
 
                         case 'badge':
                             $refs_html .= sprintf(
-                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-badge" style="display: inline-flex; align-items: center; justify-content: center; height: %dpx; text-decoration: none; margin: 0 3px;">%s</a>',
+                                '<a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" class="aicg-ref-badge" style="display: inline-flex; align-items: center; justify-content: center; height: %dpx; padding: 0 10px; background-color: %s; color: %s; border-radius: %dpx; font-size: %dpx; font-weight: 500; line-height: 1; text-decoration: none; margin: 0 3px;">%d</a>',
                                 $link,
                                 $tooltip,
                                 $ref_size,
-                                $this->generate_badge_svg($num, $ref_color, $ref_size)
+                                $this->hex_tint($ref_color, 0.85),
+                                esc_attr($ref_color),
+                                intval($ref_size / 2),
+                                $ref_font_size,
+                                $num
                             );
                             break;
 
@@ -371,10 +365,12 @@ class AICG_News_Aggregator {
                         default:
                             $inline_size = max(10, intval($ref_size * 0.6)); // Tamaño proporcional para inline
                             $refs_html .= sprintf(
-                                '<sup><a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" style="text-decoration: none;">%s</a></sup> ',
+                                '<sup><a href="%s" target="_blank" rel="noopener" aria-hidden="true" tabindex="-1" title="%s" style="color: %s; font-size: %dpx; font-weight: bold; text-decoration: none;">%d</a></sup> ',
                                 $link,
                                 $tooltip,
-                                $this->generate_inline_svg($num, $ref_color, $inline_size)
+                                esc_attr($ref_color),
+                                $inline_size,
+                                $num
                             );
                             break;
                     }
@@ -387,12 +383,70 @@ class AICG_News_Aggregator {
 
             $content_parts[] = '</div>';
 
+            // Paso 3: Generar el resumen general con los titulares de las fuentes
+            // MÁS las noticias que quedaron en el artículo, y reportar su estado
+            $headlines_summary_html = '';
+            if ($args['include_headlines']) {
+                do_action('aicg_progress', 82, __('Generando resumen general...', 'ai-content-generator'));
+
+                $summary_detail = array(
+                    'name' => __('Resumen General', 'ai-content-generator'),
+                    'news_count' => 0,
+                    'images_count' => 0,
+                    'images_source' => '',
+                    'status' => 'pending',
+                    'message' => ''
+                );
+
+                // Combinar titulares de las fuentes con las noticias procesadas
+                $summary_headlines = $main_headlines;
+                foreach ($all_processed_news as $item) {
+                    if (empty($item['title'])) {
+                        continue;
+                    }
+                    $summary_headlines[] = array(
+                        'title' => $item['title'],
+                        'source' => !empty($item['source']) ? $item['source'] : ''
+                    );
+                }
+
+                if (!empty($summary_headlines)) {
+                    $summary_result = $this->generate_headlines_summary($summary_headlines);
+                    if (!is_wp_error($summary_result) && !empty($summary_result['content'])) {
+                        $headlines_summary_html = '<div class="aicg-general-summary">'
+                            . '<h2>' . esc_html__('Resumen del Día', 'ai-content-generator') . '</h2>'
+                            . $summary_result['content']
+                            . '</div>';
+                        $result['tokens_used'] += isset($summary_result['usage']['total_tokens']) ? $summary_result['usage']['total_tokens'] : 0;
+                        $result['cost'] += isset($summary_result['cost']) ? $summary_result['cost'] : 0;
+                        $summary_detail['news_count'] = count($summary_headlines);
+                        $summary_detail['status'] = 'success';
+                    } elseif (is_wp_error($summary_result)) {
+                        AICG_Logger::debug('[AICG] Error generando resumen general: ' . $summary_result->get_error_message());
+                        $summary_detail['status'] = 'error';
+                        $summary_detail['message'] = $summary_result->get_error_message();
+                    } else {
+                        AICG_Logger::debug('[AICG] El proveedor devolvió un resumen general vacío');
+                        $summary_detail['status'] = 'empty';
+                        $summary_detail['message'] = __('El proveedor devolvió un resumen vacío', 'ai-content-generator');
+                    }
+                } else {
+                    AICG_Logger::debug('[AICG] Sin titulares ni noticias para el resumen general');
+                    $summary_detail['status'] = 'no_news';
+                    $summary_detail['message'] = __('Sin titulares disponibles (fuentes RSS sin resultados)', 'ai-content-generator');
+                }
+
+                // Mostrarlo como primera fila del detalle por sección
+                array_unshift($result['topics_details'], $summary_detail);
+            }
+
             // Generar título
             $date_formatted = wp_date('l, j \d\e F \d\e Y');
             /* translators: %s: fecha del resumen */
             $result['title'] = sprintf(__('Resumen de noticias - %s', 'ai-content-generator'), $date_formatted);
 
             $result['content'] = implode("\n", $content_parts);
+            $result['content'] = str_replace('<!--AICG_HEADLINES_SUMMARY_PLACEHOLDER-->', $headlines_summary_html, $result['content']);
 
             // Verificar que hay contenido real (más que solo el wrapper vacío)
             $content_without_wrapper = str_replace(array('<div class="aicg-news-summary">', '</div>'), '', $result['content']);
@@ -557,7 +611,9 @@ class AICG_News_Aggregator {
 
         foreach ($sources as $source) {
             // Solo procesar fuentes activas
-            if (!isset($source['activo']) || !$source['activo']) {
+            // Fuentes guardadas por versiones antiguas pueden no traer la clave
+            // 'activo'; en ese caso se consideran activas
+            if (isset($source['activo']) && !$source['activo']) {
                 continue;
             }
 
@@ -602,7 +658,9 @@ class AICG_News_Aggregator {
         $relevant_keywords = isset($topic_source_mapping[$topic_lower]) ? $topic_source_mapping[$topic_lower] : array();
 
         foreach ($custom_sources as $source) {
-            if (!isset($source['activo']) || !$source['activo']) {
+            // Fuentes guardadas por versiones antiguas pueden no traer la clave
+            // 'activo'; en ese caso se consideran activas
+            if (isset($source['activo']) && !$source['activo']) {
                 continue;
             }
 
@@ -1190,11 +1248,11 @@ FORMATO DE SALIDA REQUERIDO:
         // Obtener prompt del sistema personalizado
         $system_prompt = get_option('aicg_news_system_prompt', 'Eres un periodista experto que resume noticias de forma objetiva y precisa. Usas HTML puro, nunca Markdown.');
 
-        $result = $this->provider->generate_text($prompt, array(
-            'max_tokens' => 1000,
+        $result = $this->provider->generate_text_retry_empty($prompt, array(
+            'max_tokens' => 2000,
             'temperature' => 0.5,
             'system_message' => $system_prompt
-        ));
+        ), 6000);
 
         // Post-procesar para convertir Markdown a HTML si la IA lo ignoró
         if (!is_wp_error($result) && !empty($result['content'])) {
@@ -1307,11 +1365,11 @@ EJEMPLO DE FORMATO:
         // Obtener prompt del sistema personalizado
         $system_prompt = get_option('aicg_news_system_prompt', 'Eres un periodista experto que resume noticias de forma objetiva. Usas HTML puro, nunca Markdown.');
 
-        $result = $this->provider->generate_text($prompt, array(
+        $result = $this->provider->generate_text_retry_empty($prompt, array(
             'max_tokens' => 1500,
             'temperature' => 0.5,
             'system_message' => $system_prompt
-        ));
+        ), 4000);
 
         // Post-procesar para convertir Markdown a HTML si la IA lo ignoró
         if (!is_wp_error($result) && !empty($result['content'])) {
@@ -2580,180 +2638,16 @@ EJEMPLO DE FORMATO:
     }
 
     /**
-     * Obtener path SVG para un dígito (0-9)
-     * Paths diseñados para viewBox de 10x14
+     * Aclarar un color hexadecimal mezclándolo con blanco.
      *
-     * @param int $digit Dígito 0-9
-     * @return string Path SVG
-     */
-    private function get_digit_path($digit) {
-        $paths = array(
-            0 => 'M5 1C2.5 1 1 3 1 7s1.5 6 4 6 4-2 4-6-1.5-6-4-6zm0 2c1.4 0 2 1.3 2 4s-.6 4-2 4-2-1.3-2-4 .6-4 2-4z',
-            1 => 'M4 1L2 3v1h2v8h-2v1h6v-1h-2V1z',
-            2 => 'M2 3c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2c0 1.1-.9 2-2 2H4v3h4v1H2v-5h4c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1v1H2V3z',
-            3 => 'M2 3c0-1.1.9-2 2-2h2c1.1 0 2 .9 2 2v2c0 .6-.2 1-.6 1.4.4.4.6.8.6 1.4v3c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2v-1h1v1c0 .6.4 1 1 1h2c.6 0 1-.4 1-1V8c0-.6-.4-1-1-1H4V6h2c.6 0 1-.4 1-1V3c0-.6-.4-1-1-1H4c-.6 0-1 .4-1 1v1H2V3z',
-            4 => 'M6 1v6H2V8h4v5h1V8h2V7H7V1z M6 7V3L3 7z',
-            5 => 'M8 1H2v5h4c.6 0 1 .4 1 1v3c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1v-1H2v1c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2H3V2h5V1z',
-            6 => 'M6 1H4C2.9 1 2 1.9 2 3v8c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2H3V3c0-.6.4-1 1-1h2V1zm0 6c.6 0 1 .4 1 1v3c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V8c0-.6.4-1 1-1h2z',
-            7 => 'M2 1v1h5l-4 11h1l4-11V1z',
-            8 => 'M4 1C2.9 1 2 1.9 2 3v2c0 .6.2 1 .6 1.4-.4.4-.6.8-.6 1.4v3c0 1.1.9 2 2 2h2c1.1 0 2-.9 2-2V8c0-.6-.2-1-.6-1.4.4-.4.6-.8.6-1.4V3c0-1.1-.9-2-2-2H4zm0 1h2c.6 0 1 .4 1 1v2c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V3c0-.6.4-1 1-1zm0 5h2c.6 0 1 .4 1 1v3c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V8c0-.6.4-1 1-1z',
-            9 => 'M4 1C2.9 1 2 1.9 2 3v3c0 1.1.9 2 2 2h3v3c0 .6-.4 1-1 1H4v1h2c1.1 0 2-.9 2-2V3c0-1.1-.9-2-2-2H4zm0 1h2c.6 0 1 .4 1 1v3c0 .6-.4 1-1 1H4c-.6 0-1-.4-1-1V3c0-.6.4-1 1-1z',
-        );
-
-        return isset($paths[$digit]) ? $paths[$digit] : $paths[0];
-    }
-
-    /**
-     * Convertir SVG a data URI base64 para uso en img tag
+     * Devuelve hex en lugar de rgba() porque KSES no permite la función
+     * rgba() en estilos inline (safecss_filter_attr descarta la declaración).
      *
-     * @param string $svg SVG raw
-     * @return string Data URI base64
+     * @param string $hex Color en formato hex (#RRGGBB o #RGB)
+     * @param float  $ratio Proporción de blanco (0 = color original, 1 = blanco)
+     * @return string Color en formato hex (#RRGGBB)
      */
-    private function svg_to_data_uri($svg) {
-        return 'data:image/svg+xml;base64,' . base64_encode($svg);
-    }
-
-    /**
-     * Generar SVG con número usando paths (no texto)
-     *
-     * @param int    $num Número a mostrar
-     * @param string $bg_color Color de fondo
-     * @param string $style Estilo (circle o square)
-     * @param int    $size Tamaño en píxeles
-     * @return string img tag con SVG como data URI
-     */
-    private function generate_number_svg($num, $bg_color, $style, $size = 24) {
-        $is_circle = ($style === 'circle');
-        $rx = $is_circle ? '12' : '4';
-
-        // Para números de un dígito
-        if ($num < 10) {
-            $path = $this->get_digit_path($num);
-            $svg = sprintf(
-                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(7,5)"><path d="%s" fill="white"/></g></svg>',
-                esc_attr($bg_color),
-                $rx,
-                $path
-            );
-        } else {
-            // Para números de dos dígitos
-            $d1 = floor($num / 10);
-            $d2 = $num % 10;
-            $path1 = $this->get_digit_path($d1);
-            $path2 = $this->get_digit_path($d2);
-
-            $svg = sprintf(
-                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="%s"/><g transform="translate(2,5) scale(0.9)"><path d="%s" fill="white"/></g><g transform="translate(12,5) scale(0.9)"><path d="%s" fill="white"/></g></svg>',
-                esc_attr($bg_color),
-                $rx,
-                $path1,
-                $path2
-            );
-        }
-
-        return sprintf(
-            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle;">',
-            $this->svg_to_data_uri($svg),
-            $size,
-            $size
-        );
-    }
-
-    /**
-     * Generar SVG con número para estilo badge
-     *
-     * @param int    $num Número a mostrar
-     * @param string $color Color del texto y borde
-     * @param int    $size Tamaño en píxeles
-     * @return string img tag con SVG como data URI
-     */
-    private function generate_badge_svg($num, $color, $size = 24) {
-        $bg_color = $this->hex_to_rgba($color, 0.15);
-
-        if ($num < 10) {
-            $path = $this->get_digit_path($num);
-            $svg = sprintf(
-                '<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><rect width="24" height="24" fill="%s" rx="12"/><g transform="translate(7,5)"><path d="%s" fill="%s"/></g></svg>',
-                $bg_color,
-                $path,
-                esc_attr($color)
-            );
-            $width = $size;
-        } else {
-            $d1 = floor($num / 10);
-            $d2 = $num % 10;
-            $path1 = $this->get_digit_path($d1);
-            $path2 = $this->get_digit_path($d2);
-
-            $svg = sprintf(
-                '<svg width="32" height="24" viewBox="0 0 32 24" xmlns="http://www.w3.org/2000/svg"><rect width="32" height="24" fill="%s" rx="12"/><g transform="translate(6,5) scale(0.9)"><path d="%s" fill="%s"/></g><g transform="translate(16,5) scale(0.9)"><path d="%s" fill="%s"/></g></svg>',
-                $bg_color,
-                $path1,
-                esc_attr($color),
-                $path2,
-                esc_attr($color)
-            );
-            $width = intval($size * 1.33); // Proporción para dos dígitos
-        }
-
-        return sprintf(
-            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:middle;">',
-            $this->svg_to_data_uri($svg),
-            $width,
-            $size
-        );
-    }
-
-    /**
-     * Generar SVG con número para estilo inline (superíndice)
-     *
-     * @param int    $num Número a mostrar
-     * @param string $color Color del texto
-     * @param int    $size Tamaño en píxeles (altura)
-     * @return string img tag con SVG como data URI
-     */
-    private function generate_inline_svg($num, $color, $size = 14) {
-        $height = $size;
-        if ($num < 10) {
-            $path = $this->get_digit_path($num);
-            $svg = sprintf(
-                '<svg width="10" height="14" viewBox="0 0 10 14" xmlns="http://www.w3.org/2000/svg"><path d="%s" fill="%s"/></svg>',
-                $path,
-                esc_attr($color)
-            );
-            $width = intval($size * 0.71); // Proporción 10/14
-        } else {
-            $d1 = floor($num / 10);
-            $d2 = $num % 10;
-            $path1 = $this->get_digit_path($d1);
-            $path2 = $this->get_digit_path($d2);
-
-            $svg = sprintf(
-                '<svg width="18" height="14" viewBox="0 0 18 14" xmlns="http://www.w3.org/2000/svg"><g transform="scale(0.85)"><path d="%s" fill="%s"/></g><g transform="translate(9,0) scale(0.85)"><path d="%s" fill="%s"/></g></svg>',
-                $path1,
-                esc_attr($color),
-                $path2,
-                esc_attr($color)
-            );
-            $width = intval($size * 1.29); // Proporción 18/14
-        }
-
-        return sprintf(
-            '<img src="%s" width="%d" height="%d" alt="" aria-hidden="true" style="display:inline-block;vertical-align:super;">',
-            $this->svg_to_data_uri($svg),
-            $width,
-            $height
-        );
-    }
-
-    /**
-     * Convertir color hexadecimal a RGBA
-     *
-     * @param string $hex Color en formato hex (#RRGGBB)
-     * @param float  $alpha Valor de transparencia (0-1)
-     * @return string Color en formato rgba()
-     */
-    private function hex_to_rgba($hex, $alpha = 1) {
+    private function hex_tint($hex, $ratio = 0.85) {
         // Remover # si existe
         $hex = ltrim($hex, '#');
 
@@ -2762,11 +2656,14 @@ EJEMPLO DE FORMATO:
             $hex = $hex[0] . $hex[0] . $hex[1] . $hex[1] . $hex[2] . $hex[2];
         }
 
-        // Convertir a RGB
         $r = hexdec(substr($hex, 0, 2));
         $g = hexdec(substr($hex, 2, 2));
         $b = hexdec(substr($hex, 4, 2));
 
-        return sprintf('rgba(%d, %d, %d, %.2f)', $r, $g, $b, $alpha);
+        $r = (int) round($r + (255 - $r) * $ratio);
+        $g = (int) round($g + (255 - $g) * $ratio);
+        $b = (int) round($b + (255 - $b) * $ratio);
+
+        return sprintf('#%02x%02x%02x', $r, $g, $b);
     }
 }

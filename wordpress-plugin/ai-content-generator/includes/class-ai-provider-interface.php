@@ -203,6 +203,35 @@ abstract class AICG_AI_Provider_Base implements AICG_AI_Provider_Interface {
     }
 
     /**
+     * Generar texto reintentando una vez con más max_tokens si el modelo
+     * devuelve contenido vacío.
+     *
+     * Los modelos razonadores (DeepSeek R1/v4, etc.) consumen max_tokens en su
+     * razonamiento interno; si el presupuesto se agota antes de la respuesta
+     * final, el contenido llega vacío aunque la llamada haya sido exitosa.
+     *
+     * @param string $prompt
+     * @param array  $options Opciones para generate_text (incluye max_tokens inicial)
+     * @param int    $retry_max_tokens max_tokens para el reintento
+     * @return array|WP_Error
+     */
+    public function generate_text_retry_empty($prompt, $options, $retry_max_tokens) {
+        $result = $this->generate_text($prompt, $options);
+
+        $empty_content = !is_wp_error($result) && (!isset($result['content']) || trim($result['content']) === '');
+        $empty_error = is_wp_error($result) && $result->get_error_code() === 'empty_completion';
+
+        if ($empty_content || $empty_error) {
+            $initial = isset($options['max_tokens']) ? intval($options['max_tokens']) : 0;
+            AICG_Logger::debug('[AICG] Respuesta sin contenido con max_tokens=' . $initial . ', reintentando con ' . intval($retry_max_tokens));
+            $options['max_tokens'] = $retry_max_tokens;
+            $result = $this->generate_text($prompt, $options);
+        }
+
+        return $result;
+    }
+
+    /**
      * Probar conexión
      *
      * @return array|WP_Error

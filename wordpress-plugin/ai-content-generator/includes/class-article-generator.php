@@ -115,17 +115,25 @@ class AICG_Article_Generator {
             do_action('aicg_progress', 15, __('Generando título...', 'ai-content-generator'));
             $title_result = $this->generate_title($args['topic'], $args['temperature']);
             if (is_wp_error($title_result)) {
-                return $title_result;
+                // Si el modelo no devolvió título, continuar: se intentará
+                // extraer del primer encabezado del contenido generado
+                if ($title_result->get_error_code() !== 'empty_completion') {
+                    return $title_result;
+                }
+                AICG_Logger::debug('[AICG] Título vacío tras reintento; se intentará extraer del contenido');
+            } else {
+                $result['title'] = $title_result['title'];
+                $result['tokens_used'] += $title_result['usage']['total_tokens'];
+                $result['cost'] += $title_result['cost'];
             }
-            $result['title'] = $title_result['title'];
-            $result['tokens_used'] += $title_result['usage']['total_tokens'];
-            $result['cost'] += $title_result['cost'];
 
-            // Paso 2: Generar contenido
+            // Paso 2: Generar contenido (si no hay título, usar el tema como
+            // título de trabajo para el prompt)
+            $working_title = $result['title'] !== '' ? $result['title'] : $args['topic'];
             do_action('aicg_progress', 35, __('Escribiendo contenido...', 'ai-content-generator'));
             $content_result = $this->generate_content(
                 $args['topic'],
-                $result['title'],
+                $working_title,
                 $args['min_words'],
                 $args['max_words'],
                 $args['sections'],
@@ -137,6 +145,26 @@ class AICG_Article_Generator {
             $result['content'] = $content_result['content'];
             $result['tokens_used'] += $content_result['usage']['total_tokens'];
             $result['cost'] += $content_result['cost'];
+
+            // El modelo a veces repite el título como primer encabezado del
+            // contenido: quitarlo si duplica el título, o usarlo como título
+            // del post si el título quedó vacío
+            if (preg_match('/^\s*<h([12])[^>]*>(.*?)<\/h\1>\s*/is', $result['content'], $h_matches)) {
+                $heading_text = trim(wp_strip_all_tags($h_matches[2]));
+                if ($heading_text !== '') {
+                    if ($result['title'] === '') {
+                        $result['title'] = $heading_text;
+                        $result['content'] = substr($result['content'], strlen($h_matches[0]));
+                    } elseif (strtolower($heading_text) === strtolower(trim($result['title']))) {
+                        $result['content'] = substr($result['content'], strlen($h_matches[0]));
+                    }
+                }
+            }
+
+            // Último recurso: usar el tema como título en vez de publicar "(sin título)"
+            if ($result['title'] === '') {
+                $result['title'] = $args['topic'];
+            }
 
             // Paso 3: Generar imagen (opcional)
             if ($args['generate_image']) {
@@ -181,11 +209,13 @@ class AICG_Article_Generator {
             $topic
         );
 
-        $result = $this->provider->generate_text($prompt, array(
-            'max_tokens' => 100,
+        // max_tokens generoso: los modelos razonadores gastan presupuesto en su
+        // razonamiento interno antes de emitir el título (con 100 devolvían vacío)
+        $result = $this->provider->generate_text_retry_empty($prompt, array(
+            'max_tokens' => 1000,
             'temperature' => $temperature,
             'system_message' => 'Eres un experto en crear títulos atractivos para artículos. Respondes solo con el título solicitado.'
-        ));
+        ), 4000);
 
         if (is_wp_error($result)) {
             return $result;

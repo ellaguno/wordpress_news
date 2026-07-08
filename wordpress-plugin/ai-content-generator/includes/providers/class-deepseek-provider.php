@@ -133,6 +133,24 @@ class AICG_DeepSeek_Provider extends AICG_AI_Provider_Base {
             return new WP_Error('invalid_response', __('Respuesta inválida de DeepSeek', 'ai-content-generator'));
         }
 
+        $message = $response['choices'][0]['message'];
+
+        // Los modelos razonadores (R1, v4) gastan max_tokens en reasoning_content;
+        // si el presupuesto se agota, content llega vacío sin error de API
+        if (trim((string) $message['content']) === '') {
+            $finish_reason = isset($response['choices'][0]['finish_reason']) ? $response['choices'][0]['finish_reason'] : 'desconocido';
+            $has_reasoning = !empty($message['reasoning_content']);
+            AICG_Logger::debug('[AICG DeepSeek] Respuesta sin contenido. finish_reason=' . $finish_reason . ', reasoning_content=' . ($has_reasoning ? 'presente' : 'ausente'));
+            return new WP_Error(
+                'empty_completion',
+                sprintf(
+                    /* translators: %s: finish_reason devuelto por la API */
+                    __('DeepSeek no devolvió contenido (finish_reason: %s). Los modelos razonadores pueden agotar max_tokens antes de responder; aumenta el límite o usa un modelo no razonador.', 'ai-content-generator'),
+                    $finish_reason
+                )
+            );
+        }
+
         $usage = isset($response['usage']) ? $response['usage'] : array(
             'prompt_tokens' => 0,
             'completion_tokens' => 0,
@@ -140,7 +158,7 @@ class AICG_DeepSeek_Provider extends AICG_AI_Provider_Base {
         );
 
         return array(
-            'content' => $response['choices'][0]['message']['content'],
+            'content' => $message['content'],
             'usage' => $usage,
             'model' => $options['model'],
             'cost' => $this->estimate_cost(

@@ -574,7 +574,7 @@ class AICG_Gutenberg_Converter {
                     break;
 
                 case 'badge':
-                    $bg_color = self::hex_to_rgba($ref_color, 0.15);
+                    $bg_color = self::hex_tint($ref_color, 0.85);
                     $refs_html .= sprintf(
                         '<a href="%s" target="_blank" rel="noopener" style="display: inline-block; padding: 3px 10px; background: %s; color: %s; border-radius: 12px; font-size: 12px; text-decoration: none; margin: 0 3px; font-weight: 500;">%d</a>',
                         esc_url($url),
@@ -605,9 +605,12 @@ class AICG_Gutenberg_Converter {
     }
 
     /**
-     * Convertir hex a rgba
+     * Aclarar un color hexadecimal mezclándolo con blanco.
+     *
+     * Devuelve hex en lugar de rgba() porque KSES no permite la función
+     * rgba() en estilos inline (safecss_filter_attr descarta la declaración).
      */
-    private static function hex_to_rgba($hex, $alpha = 1) {
+    private static function hex_tint($hex, $ratio = 0.85) {
         $hex = ltrim($hex, '#');
 
         if (strlen($hex) === 3) {
@@ -618,6 +621,10 @@ class AICG_Gutenberg_Converter {
         $g = hexdec(substr($hex, 2, 2));
         $b = hexdec(substr($hex, 4, 2));
 
-        return sprintf('rgba(%d, %d, %d, %.2f)', $r, $g, $b, $alpha);
+        $r = (int) round($r + (255 - $r) * $ratio);
+        $g = (int) round($g + (255 - $g) * $ratio);
+        $b = (int) round($b + (255 - $b) * $ratio);
+
+        return sprintf('#%02x%02x%02x', $r, $g, $b);
     }
 }
